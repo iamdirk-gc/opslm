@@ -63,6 +63,8 @@ def test_eval_case_json_roundtrip():
         scenario_id="s1",
         pair=FactPair(fact_a=make_fact("f1", "Revenue"), fact_b=make_fact("f2", "Net Revenue")),
         label=Relation.EQUIVALENT,
+        concept_same=True,
+        scope_same=True,
         rationale="Same entity, period and value; net revenue is the reported revenue line.",
         source_kind=SourceKind.SYNTHETIC,
         split=Split.TEST,
@@ -72,12 +74,14 @@ def test_eval_case_json_roundtrip():
     assert EvalCase.model_validate_json(case.model_dump_json()) == case
 
 
-def _case(label, reason=None, fields=()):
+def _case(label, reason=None, fields=(), concept=True, scope=True, b_value="50"):
     return EvalCase(
         case_id="c1",
         scenario_id="s1",
-        pair=FactPair(fact_a=make_fact("f1"), fact_b=make_fact("f2")),
+        pair=FactPair(fact_a=make_fact("f1"), fact_b=make_fact("f2", value=b_value)),
         label=label,
+        concept_same=concept,
+        scope_same=scope,
         rationale="r",
         source_kind=SourceKind.SYNTHETIC,
         split=Split.TEST,
@@ -101,3 +105,15 @@ def test_non_equivalent_requires_discrepancy_reason():
 def test_unknown_discriminating_field_rejected():
     with pytest.raises(ValidationError):
         _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, ("not_a_field",))
+
+
+def test_label_must_follow_judgments():
+    # values differ, same concept and scope -> must be conflicting, not equivalent
+    with pytest.raises(ValidationError, match="contradicts the judgments"):
+        _case(Relation.EQUIVALENT)
+    with pytest.raises(ValidationError, match="contradicts the judgments"):
+        _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, concept=False)
+
+
+def test_equivalent_case_valid_when_values_agree():
+    assert _case(Relation.EQUIVALENT, b_value="42.5").label is Relation.EQUIVALENT

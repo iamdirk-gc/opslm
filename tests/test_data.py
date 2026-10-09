@@ -25,7 +25,11 @@ from opslm.schema import (
 
 def fact(fact_id, value="1"):
     return BusinessFact(
-        fact_id=fact_id, metric="Revenue", value=Decimal(value), source=SourceRef(document_id="d")
+        fact_id=fact_id,
+        metric="Revenue",
+        value=Decimal(value),
+        unit="USD",
+        source=SourceRef(document_id="d"),
     )
 
 
@@ -35,6 +39,8 @@ def case(n, scenario=None, split=Split.TRAIN, reviewed=False, a=None, b=None, **
         scenario_id=scenario or f"s{n}",
         pair=FactPair(fact_a=a or fact(f"a{n}", f"{n}"), fact_b=b or fact(f"b{n}", f"{n + 100}")),
         label=Relation.CONFLICTING,
+        concept_same=True,
+        scope_same=True,
         discrepancy_reason=DiscrepancyReason.UNEXPLAINED,
         rationale="r",
         source_kind=SourceKind.SYNTHETIC,

@@ -65,6 +65,7 @@ Computed by `values_agree`, not judged by eye:
 
 ## Required fields on every case
 
+- **`concept_same`** and **`scope_same`**: your answers to judgments 1 and 2 (`true`, `false`, or `null` for cannot tell). The label is checked against them and against the computed value comparison, and a case whose label contradicts its judgments is rejected when the dataset is loaded. This catches slips such as marking a pair `equivalent` when the numbers disagree.
 - **`discrepancy_reason`** (required unless `equivalent`): the primary reason.
 
 | Reason | Use when |

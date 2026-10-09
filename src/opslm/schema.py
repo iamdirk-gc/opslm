@@ -155,6 +155,12 @@ class EvalCase(_Model):
     )
     pair: FactPair
     label: Relation
+    concept_same: bool | None = Field(
+        description="Gold judgment 1: same business concept? None = cannot tell"
+    )
+    scope_same: bool | None = Field(
+        description="Gold judgment 2: same entity and period? None = cannot tell"
+    )
     rationale: str = Field(description="Why this label is correct")
     source_kind: SourceKind
     split: Split
@@ -175,6 +181,16 @@ class EvalCase(_Model):
 
     @model_validator(mode="after")
     def _consistent(self) -> EvalCase:
+        from opslm.labels import derive_label, values_agree  # deferred: labels imports schema
+
+        agree = values_agree(self.pair.fact_a, self.pair.fact_b)
+        expected = derive_label(self.concept_same, self.scope_same, agree)
+        if self.label is not expected:
+            raise ValueError(
+                f"label {self.label.value} contradicts the judgments (concept_same="
+                f"{self.concept_same}, scope_same={self.scope_same}, values_agree={agree}), "
+                f"which give {expected.value}"
+            )
         if self.label is Relation.EQUIVALENT and self.discrepancy_reason is not None:
             raise ValueError("equivalent cases must not have a discrepancy_reason")
         if self.label is not Relation.EQUIVALENT and self.discrepancy_reason is None:

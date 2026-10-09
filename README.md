@@ -25,7 +25,16 @@ See [docs/plan.md](docs/plan.md) for the full plan and the November 9 milestone,
 
 ## Status
 
-Early scaffolding. Nothing is usable yet.
+Early development. The schema, dataset loader, rules baseline and evaluation harness work;
+no benchmark data, model-backed systems or document pipeline exist yet. See
+[docs/limitations-and-open-questions.md](docs/limitations-and-open-questions.md) for what is
+missing and what is still undecided.
+
+Try the harness on the illustrative examples:
+
+```bash
+python -m opslm.eval run --dataset data/examples/guideline_examples.jsonl --system rules
+```
 
 ## Development
 

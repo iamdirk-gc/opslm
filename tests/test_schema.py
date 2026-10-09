@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from opslm.schema import (
     BusinessFact,
+    DiscrepancyReason,
     EvalCase,
     FactPair,
     Period,
@@ -65,6 +66,38 @@ def test_eval_case_json_roundtrip():
         rationale="Same entity, period and value; net revenue is the reported revenue line.",
         source_kind=SourceKind.SYNTHETIC,
         split=Split.TEST,
+        guideline_version="1.0",
         tags=("synonym",),
     )
     assert EvalCase.model_validate_json(case.model_dump_json()) == case
+
+
+def _case(label, reason=None, fields=()):
+    return EvalCase(
+        case_id="c1",
+        scenario_id="s1",
+        pair=FactPair(fact_a=make_fact("f1"), fact_b=make_fact("f2")),
+        label=label,
+        rationale="r",
+        source_kind=SourceKind.SYNTHETIC,
+        split=Split.TEST,
+        guideline_version="1.0",
+        discrepancy_reason=reason,
+        discriminating_fields=fields,
+    )
+
+
+def test_equivalent_forbids_discrepancy_reason():
+    with pytest.raises(ValidationError):
+        _case(Relation.EQUIVALENT, DiscrepancyReason.PERIOD)
+
+
+def test_non_equivalent_requires_discrepancy_reason():
+    with pytest.raises(ValidationError):
+        _case(Relation.CONFLICTING)
+    assert _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, ("value",)).label
+
+
+def test_unknown_discriminating_field_rejected():
+    with pytest.raises(ValidationError):
+        _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, ("not_a_field",))

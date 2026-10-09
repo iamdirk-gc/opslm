@@ -43,6 +43,20 @@ class Scale(int, Enum):
     BILLIONS = 1_000_000_000
 
 
+class DiscrepancyReason(str, Enum):
+    """Primary reason a pair is not equivalent. Required for every non-equivalent case."""
+
+    PERIOD = "period"  # different reporting period or period definition
+    SCALE_OR_UNIT = "scale_or_unit"  # scale, currency or unit differs
+    SCOPE = "scope"  # different entity, segment or consolidation basis
+    DEFINITION = "definition"  # different metric definition or adjustment basis
+    RESTATEMENT = "restatement"  # same fact restated between sources, supported by evidence
+    UNEXPLAINED = "unexplained"  # same concept and scope, values differ, no explanation given
+    MISSING_INFORMATION = "missing_information"  # a field needed to judge is absent
+    ERROR = "error"  # evident extraction or reporting error
+    OTHER = "other"
+
+
 class SourceKind(str, Enum):
     PUBLIC = "public"
     SYNTHETIC = "synthetic"
@@ -70,6 +84,13 @@ class SourceRef(_Model):
     )
     excerpt: str | None = Field(default=None, description="Verbatim surrounding text")
     extractor: str | None = Field(default=None, description="Tool that produced the fact")
+    page: int | None = Field(default=None, ge=1, description="1-based page number")
+    bbox: tuple[float, float, float, float] | None = Field(
+        default=None, description="Bounding box (left, top, right, bottom) on the page"
+    )
+    cell: str | None = Field(
+        default=None, description="Table or sheet cell reference, e.g. 'Revenue!C12' or 'r3c2'"
+    )
 
 
 class Period(_Model):
@@ -138,9 +159,30 @@ class EvalCase(_Model):
     source_kind: SourceKind
     split: Split
     reviewed: bool = False
+    guideline_version: str = Field(description="Labeling guideline version the label follows")
+    discrepancy_reason: DiscrepancyReason | None = Field(
+        default=None,
+        description="Why the pair is not equivalent. Required unless the label is equivalent.",
+    )
+    discriminating_fields: tuple[str, ...] = Field(
+        default=(),
+        description="BusinessFact fields that determine the label, e.g. ('period',). "
+        "Used to score whether a system cites the right evidence.",
+    )
     tags: tuple[str, ...] = Field(
         default=(), description="e.g. 'unit_mismatch', 'period_mismatch', 'synonym'"
     )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> EvalCase:
+        if self.label is Relation.EQUIVALENT and self.discrepancy_reason is not None:
+            raise ValueError("equivalent cases must not have a discrepancy_reason")
+        if self.label is not Relation.EQUIVALENT and self.discrepancy_reason is None:
+            raise ValueError("non-equivalent cases require a discrepancy_reason")
+        unknown = set(self.discriminating_fields) - set(BusinessFact.model_fields)
+        if unknown:
+            raise ValueError(f"unknown discriminating fields: {sorted(unknown)}")
+        return self
 
 
 class Evidence(_Model):
@@ -156,6 +198,15 @@ class Prediction(_Model):
 
     case_id: str
     label: Relation
+    concept_same: bool | None = Field(
+        default=None, description="Same business concept? None = could not be determined"
+    )
+    scope_same: bool | None = Field(
+        default=None, description="Same entity and period? None = could not be determined"
+    )
+    values_agree: bool | None = Field(
+        default=None, description="Normalized values agree? None = not comparable"
+    )
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence: tuple[Evidence, ...] = ()
     rationale: str | None = None

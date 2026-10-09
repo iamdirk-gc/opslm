@@ -21,7 +21,7 @@ Given two extracted business facts (metric, value, entity, period, units, defini
 | `opslm.train` | SFT/LoRA fine-tuning pipeline |
 | `opslm.pipeline` | Integration with existing extraction tools (e.g. Docling) |
 
-See [docs/plan.md](docs/plan.md) for the full plan and the November 9 milestone.
+See [docs/plan.md](docs/plan.md) for the full plan and the November 9 milestone, and [docs/labeling-guidelines.md](docs/labeling-guidelines.md) for how evaluation cases are labeled.
 
 ## Status
 

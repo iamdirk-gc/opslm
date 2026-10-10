@@ -1,5 +1,7 @@
 # OpsLM
 
+[![CI](https://github.com/iamdirk-gc/opslm/actions/workflows/ci.yml/badge.svg)](https://github.com/iamdirk-gc/opslm/actions/workflows/ci.yml)
+
 Open-source toolkit for semantic data harmonization and model evaluation.
 
 Extracting values from business documents is increasingly easy. Deciding whether two extracted facts mean the same thing, differ for an explainable reason, or genuinely conflict is harder. OpsLM provides a way to measure how well rules, frontier LLMs, and small open-weight models do that, and to fine-tune a specialized model for it.

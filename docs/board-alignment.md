@@ -17,7 +17,7 @@ owner's decision. Dates are from the board's Tracker sheet.
 |---|---|---|
 | 1.2 Schema | In progress | Typed models exist (`schema.py`). Mapping to the board's output fields: resolution_status = `label`, reason = `discrepancy_reason`, abstention = `insufficient_evidence`, provenance = `SourceRef`, evidence_refs = `Prediction.evidence`. **Gap:** evidence references name a fact and field, not an exact span (page, table, cell), which tasks 2.3 and 4.1 require |
 | 1.3 Guidelines | Not started | Drafted (v1.1), unreviewed by a second person |
-| 1.4 Repo | In progress | License, packaging, layout and 170 tests exist. **No CI yet** |
+| 1.4 Repo | In progress | License, packaging, layout and 170 tests exist. CI added (GitHub Actions: lint, tests on Python 3.10-3.14, a fresh-install smoke run, a package build) |
 | 1.5 Eval contract and threshold | Not started | Metrics implemented. **The fine-tuning success threshold is not defined** |
 | 1.6 Seed examples | Not started | Nine illustrative examples exist; they are not the owner's hand-labeled seed set |
 | 2.1-2.4 Extraction | Not started | **Nothing built.** `SourceRef` has page, bbox and cell fields for it |
@@ -44,7 +44,6 @@ labeling has four days. Suggested mitigations:
 
 ## Gaps not on the board
 
-- Continuous integration (part of 1.4).
 - Candidate-pair mining tool (3.2).
 - End-to-end evaluation mode and defined difficulty slices (4.1).
 - Evidence-span references on predictions (1.2, 2.3, 4.1).

@@ -11,8 +11,9 @@ Status as of the evaluation-harness milestone. This document is for the project 
 | Labeling guidelines v1.0 | Written, **not yet tested by two reviewers** |
 | JSONL dataset loader with leakage checks | Built (`opslm.data`) |
 | Rules-based baseline | Built (`opslm.baselines.rules`) |
-| Claude-backed system (frontier LLM) | Built and tested against a mock; **never run against the real API** (`opslm.baselines.llm`) |
+| LLM system, provider-agnostic (Anthropic, OpenAI-compatible endpoints, Gemini on Vertex) | Built and tested against mocks; **never run against a real model** (`opslm.baselines.llm`, `opslm.baselines.backends`) |
 | Evaluation harness (metrics, confidence intervals, paired test, run artifacts, CLI) | Built (`opslm.eval`) |
+| Labeling workflow (spreadsheet export, validated import, agreement, adjudication, finalize) | Built (`opslm.labeling`, [labeling-workflow.md](labeling-workflow.md)), exercised only on synthetic test data |
 | Benchmark dataset | **None.** Only nine illustrative examples, not benchmark data |
 | Base open-weight and fine-tuned systems | Not started |
 | Synthetic data generator | Not started |
@@ -54,7 +55,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Models and budget
 
 15. **Base model family and size.** Suggested: one Apache-2.0 family (e.g. Qwen), a small size (1.5-3B) locally on the M2, optionally 7-8B on a rented GPU.
-16. **Frontier comparison model and API budget.** The system defaults to Claude Opus 5.5 at medium effort because it is the current general-purpose default, not because it is the best choice. Claude Fable 5.1 is Anthropic's most capable model and costs about 2.5x as much. Which one is "the frontier baseline" is a positioning decision: a stronger baseline makes a small model's win more credible. A single evaluation pass of 200 cases is estimated at roughly $2-11 on Opus 5.5 (the CLI prints an estimate first and will not spend without `--confirm-spend`), so budget is not the constraint. Prices in the code are a dated snapshot and must be re-checked before quoting costs publicly.
+16. **Which models to compare, and how to price them.** The system is provider-agnostic, so this is now a pure selection question. Suggested shape: one or two frontier models (for example Claude Opus 5.5 or Fable 5.1, or Gemini on Vertex), one mid-size open-weight model served from Vertex AI or vLLM, the same small model fine-tuned, and the rules baseline. A stronger frontier baseline makes a small model's win more credible. A single 200-case pass on Opus 5.5 is estimated at roughly $2-11 (the CLI prints an estimate first and will not run without `--confirm-spend`), so API budget is not the constraint. The harder decision is the cost-comparison method for self-hosted models (see the LLM system limitations).
 17. **GPU quota** on the new Google Cloud project (`opslm-511123`) must be requested ahead of time and can take days. Not yet requested.
 
 ### Scope
@@ -70,13 +71,15 @@ Each item has what the engineering side did by default. Defaults can be changed;
 - Fiscal vs calendar periods with no dates may be judged the same.
 - Its 100% score on the nine examples is by construction: the rules and examples were written together.
 
-### Claude-backed system
-- **Never run for real.** No API credentials were available while building it, so it is tested only against a mock. The first real run may surface prompt or schema problems.
-- **Non-deterministic.** Current Claude models do not accept temperature or seed settings, so reruns on the same cases can differ. Report results from several runs (or at least state it) before claiming small differences.
-- **Numeric values are hidden from the model by default.** This follows the guidelines (concept never depends on the numbers) and lets code do the arithmetic. The tradeoff: if a source excerpt or definition only makes sense with the number, the model cannot use it. `--show-values` exists to test this.
-- **No silent model fallback.** Anthropic's server-side refusal fallback is intentionally off, because it would change which model answered mid-benchmark. A refusal is recorded as an error and scored wrong. If refusals turn out to be common on financial text, this needs a decision.
-- **One prompt, no tuning.** The prompt is a condensed copy of the guidelines plus five abbreviated examples. It was not iterated against data, and it must be updated by hand whenever the guidelines change (the prompt hash is recorded with each run, so stale prompts are detectable). Keep benchmark cases distinct from the prompt's examples.
-- **Cost covers the model call only** and uses a dated price snapshot. Output tokens include thinking tokens, which cannot be predicted, so estimates are a range.
+### LLM system and its backends
+- **Never run for real.** No model credentials were available while building it, so everything is tested against mocks. The OpenAI-compatible and Vertex Gemini parameter names were checked against the installed SDKs' signatures, not against live services. Expect a first real run per provider to surface small problems.
+- **Structured output varies by provider.** Anthropic, vLLM and recent Ollama can constrain output to the JSON schema. Servers or models without that fall back to JSON mode or plain text with the schema in the prompt (`--structured`), which is less reliable and will raise the error count. Error counts should be reported alongside accuracy when comparing systems.
+- **Non-deterministic or not controllable.** Current Claude models reject temperature and seed settings. The other backends default to temperature 0, which reduces but does not eliminate variation. Report several runs before claiming small differences.
+- **Numeric values are hidden from the model by default.** This follows the guidelines (concept never depends on the numbers) and lets code do the arithmetic. The tradeoff: if an excerpt or definition only makes sense with the number, the model cannot use it. `--show-values` exists to test this.
+- **No silent model fallback.** No provider-side fallback is enabled, since it would change which model answered mid-benchmark. A refusal or content-filter block is recorded as an error and scored wrong. If these turn out to be common on financial text, this needs a decision.
+- **One prompt for every model.** The prompt is a condensed copy of the guidelines plus five abbreviated examples, not tuned per model. Smaller open models may need different wording or few-shot examples, and a single shared prompt may understate them. The prompt must be updated by hand when the guidelines change (its hash is recorded with each run). Keep benchmark cases distinct from the prompt's examples.
+- **Cost is only known for hosted models with a price.** Built-in prices are a dated snapshot of Anthropic list prices; for any other hosted model pass `--price-in` and `--price-out`. Self-hosted and fine-tuned models show no cost, because their cost is compute time, which is not attributed yet. This matters for the plan's central cost claim: **a fair cost comparison between a hosted frontier model and a self-hosted small model needs a stated method** (for example GPU-hours per 1,000 pairs at a quoted instance price). That method is not designed.
+- **Output tokens include reasoning tokens** where the provider bills them, so estimates are a range.
 
 ### Schema
 - Each fact holds one numeric value. Ranges, "approximately", multi-value cells and non-numeric facts are not represented.
@@ -101,7 +104,9 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Process and infrastructure
 - Labeling guidelines have never been used by a second person. Expect the first overlap batch to expose gaps.
 - No continuous integration, no pre-commit hooks, no type checking beyond ruff.
-- No tooling for labeling (spreadsheet or small review app). Decide how the two reviewers will actually enter labels.
+- **Labeling tool is spreadsheet-based, not an app.** Chosen because it needs no hosting and fits two reviewers. Limits: no live collaboration on one sheet (each reviewer has their own), no row locking, no in-sheet display of the derived label, and the dropdowns are not enforced if a sheet is edited elsewhere (the importer re-checks everything). A web review app is possible later; if built it should be hosted on Google Cloud, not run from a laptop.
+- **No candidate source yet.** The tool needs a candidates file, and nothing produces one besides hand-written examples. The synthetic generator and the public-filing extraction are what will create real candidates.
+- **Kappa on about 30 shared cases is noisy.** Treat the 0.7 target as a rough signal; a handful of disagreements can move it a lot.
 
 ## Part 3: Not yet designed
 
@@ -114,7 +119,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ## Suggested order for the next steps
 
 1. Owner settles items 1-8 (labels and guidelines).
-2. Both reviewers label the shared 30-case overlap and compare. Revise the guidelines.
+2. Dry-run the labeling workflow on the nine examples, then both reviewers label the shared 30-case overlap and compare. Revise the guidelines.
 3. Build the frontier-LLM system and run it on the overlap batch for a first real comparison against the rules baseline.
-4. Build the synthetic generator and the labeling tool.
+4. Build the synthetic generator (the source of candidate pairs).
 5. Fine-tuning experiment.

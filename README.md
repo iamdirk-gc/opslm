@@ -17,7 +17,8 @@ Given two extracted business facts (metric, value, entity, period, units, defini
 |---|---|
 | `opslm.eval` | Benchmark harness: accuracy, false matches, evidence traceability, latency, cost |
 | `opslm.datagen` | Synthetic generator for labeled equivalent, conflicting, and ambiguous fact pairs |
-| `opslm.baselines` | Rules-based, frontier LLM, and untuned open-weight baselines |
+| `opslm.baselines` | Rules-based and LLM systems. The LLM system is provider-agnostic: Anthropic, any OpenAI-compatible endpoint (vLLM, Ollama, Vertex AI open models), and Gemini on Vertex |
+| `opslm.labeling` | Spreadsheet workflow for two reviewers: export, validated import, agreement, adjudication ([docs](docs/labeling-workflow.md)) |
 | `opslm.train` | SFT/LoRA fine-tuning pipeline |
 | `opslm.pipeline` | Integration with existing extraction tools (e.g. Docling) |
 

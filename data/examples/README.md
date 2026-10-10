@@ -10,3 +10,6 @@ says nothing about real performance; it only shows the pipeline runs end to end:
 ```bash
 python -m opslm.eval run --dataset data/examples/guideline_examples.jsonl --system rules
 ```
+
+`candidates_example.jsonl` is the same nine pairs without labels, for a dry run of the labeling
+workflow (see `docs/labeling-workflow.md`).

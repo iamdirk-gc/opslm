@@ -107,6 +107,8 @@ More cases:
 
 ## Review process
 
+The mechanics (sheets, commands, import checks) are in [labeling-workflow.md](labeling-workflow.md).
+
 1. Each reviewer labels independently, without seeing the other's answers.
 2. Each reviewer labels their own batch (about 75 cases) **plus a shared overlap batch of about 30 cases** that both label.
 3. Compute agreement on the overlap (Cohen's kappa on the four labels, and on the same-concept judgment alone). Target kappa of at least 0.7.

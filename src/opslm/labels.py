@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from opslm.schema import BusinessFact, Relation
 
-GUIDELINE_VERSION = "1.0"
+GUIDELINE_VERSION = "1.1"
 
 
 def _half_unit(fact: BusinessFact) -> Decimal:
@@ -41,11 +41,17 @@ def values_agree(a: BusinessFact, b: BusinessFact) -> bool | None:
 def derive_label(
     concept_same: bool | None, scope_same: bool | None, values_agree: bool | None
 ) -> Relation:
-    """Combine the three judgments into the final label. None means undeterminable."""
-    if concept_same is None or scope_same is None:
-        return Relation.INSUFFICIENT_EVIDENCE
-    if not concept_same or not scope_same:
+    """Combine the three judgments into the final label. None means undeterminable.
+
+    A different concept settles the label whatever the scope. Otherwise the concept must be
+    known; then a different scope settles it; then scope and value comparison must be known.
+    """
+    if concept_same is False:
         return Relation.RELATED_BUT_DIFFERENT
-    if values_agree is None:
+    if concept_same is None:
+        return Relation.INSUFFICIENT_EVIDENCE
+    if scope_same is False:
+        return Relation.RELATED_BUT_DIFFERENT
+    if scope_same is None or values_agree is None:
         return Relation.INSUFFICIENT_EVIDENCE
     return Relation.EQUIVALENT if values_agree else Relation.CONFLICTING

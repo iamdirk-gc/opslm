@@ -62,6 +62,8 @@ def test_different_or_missing_units_not_comparable():
         (False, True, True, Relation.RELATED_BUT_DIFFERENT),
         (True, False, False, Relation.RELATED_BUT_DIFFERENT),
         (False, False, None, Relation.RELATED_BUT_DIFFERENT),
+        (False, None, None, Relation.RELATED_BUT_DIFFERENT),
+        (None, False, None, Relation.INSUFFICIENT_EVIDENCE),
         (None, True, True, Relation.INSUFFICIENT_EVIDENCE),
         (True, None, True, Relation.INSUFFICIENT_EVIDENCE),
         (True, True, None, Relation.INSUFFICIENT_EVIDENCE),

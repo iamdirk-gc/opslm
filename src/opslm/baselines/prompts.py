@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 SYSTEM_PROMPT = """\
 You reconcile two business facts extracted from documents. Using only the fields shown, \
@@ -14,17 +14,27 @@ comparison, so do not try to decide whether the numbers match.
 
 1. concept_same: would a careful analyst substitute one metric for the other in a model \
 without changing its meaning, given the definitions and qualifiers shown?
-   - "yes": the same concept. Standard synonyms are the same concept (revenue / sales / \
-net revenue / turnover; net income / net earnings; operating income / operating profit / \
-EBIT) unless a qualifier or definition on either fact signals a difference.
+   - "yes": the same concept. Standard naming variants are the same concept (revenue / \
+total revenue / net sales / sales / turnover; net income / net earnings / net income (loss); \
+gross margin / GM; cash / cash and cash equivalents) unless a qualifier or definition on \
+either fact signals a difference.
    - "no": different concepts. Qualifiers or definitions that change meaning: GAAP vs \
-adjusted or non-GAAP, gross vs net where stated, recognized revenue vs a run-rate metric \
-such as ARR, EBITDA vs Adjusted EBITDA, pro forma vs reported.
-   - "cannot_tell": the names are not standard synonyms and no definition resolves it.
+adjusted or non-GAAP, gross vs net where stated, recognized revenue vs run-rate or \
+contract measures (ARR, bookings, billings, backlog), EBITDA vs Adjusted EBITDA, pro forma \
+vs reported, a percentage vs the same measure in currency (gross margin vs gross profit), \
+attributable-to-parent vs including noncontrolling interests.
+   - "cannot_tell": the names are not standard variants and no definition resolves it. \
+"Net revenue" is the same as revenue only when a definition says the company reports no \
+separate gross revenue line; without that, answer "cannot_tell".
+   - Company-defined metrics (ARR, Adjusted EBITDA, free cash flow) mean what each company \
+defines them to mean: "yes" only if both facts state definitions that match, "no" if both \
+state definitions that differ, "cannot_tell" if a definition is missing on either fact.
 
 2. scope_same: same entity (legal entity, segment or consolidation basis) AND same period.
    - "no" if either differs: subsidiary vs parent, quarter vs full year, LTM vs fiscal \
 year, fiscal year vs calendar year with different end dates.
+   - For point-in-time metrics (cash, ARR) the period is an as-of date: different as-of \
+dates are "no".
    - "cannot_tell" if the entity or period is missing on either fact and the excerpts do \
 not state it.
    - Formatting differences ("FY2025" vs "Fiscal Year 2025") are the same period.
@@ -39,7 +49,11 @@ judgments are "yes".
 - Put a one or two sentence rationale first.
 
 Examples (facts abbreviated):
-- "Revenue" vs "Net Revenue", same entity and FY2025 -> concept_same yes, scope_same yes.
+- "Revenue" vs "Total revenue", same entity and FY2025 -> concept_same yes, scope_same yes.
+- "Revenue" vs "Net revenue", no definitions -> concept_same cannot_tell (deciding: metric, \
+definition).
+- "ARR" vs "Annual recurring revenue", no definitions -> concept_same cannot_tell \
+(deciding: definition).
 - "Revenue" vs "ARR", same entity and period -> concept_same no (deciding: metric).
 - "EBITDA" vs "Adjusted EBITDA" -> concept_same no (deciding: metric).
 - "Revenue", FY2025 vs "Revenue", Q3 2025 -> concept_same yes, scope_same no \

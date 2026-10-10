@@ -137,7 +137,7 @@ def make_case(n, a, b, label, concept, scope, reason=None, fields=(), split=Spli
 
 def sample_cases():
     return [
-        make_case(1, fact("a1"), fact("b1", "Net Revenue"), E, True, True, tags=("synonym",)),
+        make_case(1, fact("a1"), fact("b1", "Total Revenue"), E, True, True, tags=("synonym",)),
         make_case(2, fact("a2"), fact("b2", "Sales", "44.1"), C, True, True,
                   DiscrepancyReason.UNEXPLAINED, ("value",)),
         make_case(3, fact("a3"), fact("b3", "ARR", "39.2"), R, False, True,

@@ -17,8 +17,8 @@ from opslm.schema import BusinessFact, Evidence, FactPair, Period, Prediction
 # canonical concept -> names it is reported under
 DEFAULT_SYNONYMS: dict[str, tuple[str, ...]] = {
     "revenue": (
-        "revenue", "revenues", "sales", "net sales", "net revenue", "net revenues",
-        "total revenue", "total revenues", "total sales", "turnover", "top line",
+        "revenue", "revenues", "sales", "net sales", "total revenue", "total revenues",
+        "total sales", "turnover", "top line",
     ),
     "cogs": ("cost of goods sold", "cogs", "cost of sales", "cost of revenue"),
     "gross_profit": ("gross profit", "gross income"),

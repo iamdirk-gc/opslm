@@ -16,7 +16,7 @@ Given two extracted business facts (metric, value, entity, period, units, defini
 | Package | Purpose |
 |---|---|
 | `opslm.eval` | Benchmark harness: accuracy, false matches, evidence traceability, latency, cost |
-| `opslm.datagen` | Synthetic generator for labeled equivalent, conflicting, and ambiguous fact pairs |
+| `opslm.datagen` | Synthetic generator: labeled fact pairs for training and candidate pairs for review ([docs](docs/synthetic-data.md)) |
 | `opslm.baselines` | Rules-based and LLM systems. The LLM system is provider-agnostic: Anthropic, any OpenAI-compatible endpoint (vLLM, Ollama, Vertex AI open models), and Gemini on Vertex |
 | `opslm.labeling` | Spreadsheet workflow for two reviewers: export, validated import, agreement, adjudication ([docs](docs/labeling-workflow.md)) |
 | `opslm.train` | SFT/LoRA fine-tuning pipeline |
@@ -27,9 +27,9 @@ See [docs/plan.md](docs/plan.md) for the full plan and the November 9 milestone,
 ## Status
 
 Early development. The schema, dataset loader, rules baseline and evaluation harness work;
-no benchmark data, model-backed systems or document pipeline exist yet. See
-[docs/limitations-and-open-questions.md](docs/limitations-and-open-questions.md) for what is
-missing and what is still undecided.
+the synthetic generator exists; no real benchmark data, evaluated model-backed results or document pipeline exist yet. See
+[docs/limitations-and-open-questions.md](docs/limitations-and-open-questions.md) and
+[docs/board-alignment.md](docs/board-alignment.md) for what is missing and what is still undecided.
 
 Try the harness on the illustrative examples:
 

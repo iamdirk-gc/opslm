@@ -14,6 +14,7 @@ Status as of the evaluation-harness milestone. This document is for the project 
 | LLM system, provider-agnostic (Anthropic, OpenAI-compatible endpoints, Gemini on Vertex) | Built and tested against mocks; **never run against a real model** (`opslm.baselines.llm`, `opslm.baselines.backends`) |
 | Evaluation harness (metrics, confidence intervals, paired test, run artifacts, CLI) | Built (`opslm.eval`) |
 | Labeling workflow (spreadsheet export, validated import, agreement, adjudication, finalize) | Built (`opslm.labeling`, [labeling-workflow.md](labeling-workflow.md)), exercised only on synthetic test data |
+| Synthetic data generator | Built ([synthetic-data.md](synthetic-data.md)); labels are by construction and unreviewed |
 | Benchmark dataset | **None.** Only nine illustrative examples, not benchmark data |
 | Base open-weight and fine-tuned systems | Not started |
 | Synthetic data generator | Not started |
@@ -31,8 +32,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
    - *Default:* four labels; explanations are captured only in `discrepancy_reason`.
 2. **Restatements.** If one source restates another, is that `conflicting` or something else?
    - *Default:* `conflicting` with reason `restatement`.
-3. **Are "Revenue", "Sales" and "Net Revenue" the same concept by default?** The guidelines say yes unless a definition or qualifier says otherwise, so the plan's $42.5M vs $44.1M example is `conflicting`. If the owner's intent was that this pair is *related but possibly different* (gross vs net), the rule changes.
-   - *Default:* standard synonyms are the same concept.
+3. **Naming variants (answered by the board's Metric Definitions, adopted in guidelines v1.1).** Revenue, Total revenue, Net sales, Sales and Turnover are equivalent when definition, entity and period match, so the plan's $42.5M vs $44.1M example is `conflicting`. "Net revenue" is conditional (equivalent only when the company reports no separate gross revenue line). Note the original plan document lists Revenue vs Net Revenue as equivalent; the board supersedes it. Please confirm.
 4. **When do two numbers "agree"?** Currently: they differ by no more than the rounding implied by the coarser reported precision (42.5M agrees with 42.54M, not 42.7M). An alternative is a fixed percentage tolerance (for example 0.5%) that an analyst would accept.
    - *Default:* precision-based rounding.
 5. **Different currencies.** No conversion is attempted, so the label is `insufficient_evidence`. Is that the intended behavior, or should currency differences be a distinct case?
@@ -105,7 +105,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 - Labeling guidelines have never been used by a second person. Expect the first overlap batch to expose gaps.
 - No continuous integration, no pre-commit hooks, no type checking beyond ruff.
 - **Labeling tool is spreadsheet-based, not an app.** Chosen because it needs no hosting and fits two reviewers. Limits: no live collaboration on one sheet (each reviewer has their own), no row locking, no in-sheet display of the derived label, and the dropdowns are not enforced if a sheet is edited elsewhere (the importer re-checks everything). A web review app is possible later; if built it should be hosted on Google Cloud, not run from a laptop.
-- **No candidate source yet.** The tool needs a candidates file, and nothing produces one besides hand-written examples. The synthetic generator and the public-filing extraction are what will create real candidates.
+- **Candidate sources.** The synthetic generator now produces candidate pairs (test split). Real candidates need the extraction adapter and a pair-mining tool, neither of which exists.
 - **Kappa on about 30 shared cases is noisy.** Treat the 0.7 target as a rough signal; a handful of disagreements can move it a lot.
 
 ## Part 3: Not yet designed
@@ -121,5 +121,8 @@ Each item has what the engineering side did by default. Defaults can be changed;
 1. Owner settles items 1-8 (labels and guidelines).
 2. Dry-run the labeling workflow on the nine examples, then both reviewers label the shared 30-case overlap and compare. Revise the guidelines.
 3. Build the frontier-LLM system and run it on the overlap batch for a first real comparison against the rules baseline.
-4. Build the synthetic generator (the source of candidate pairs).
+4. Review a first batch of generated test candidates and compare with the construction labels (`opslm.datagen.audit`).
 5. Fine-tuning experiment.
+
+
+See also [board-alignment.md](board-alignment.md) for the comparison with the project board.

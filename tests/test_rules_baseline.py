@@ -31,7 +31,7 @@ def predict(a, b):
 
 
 def test_plan_example_equivalent():
-    assert predict(fact("Revenue"), fact("Net Revenue", fid="g")).label is Relation.EQUIVALENT
+    assert predict(fact("Revenue"), fact("Total Revenue", fid="g")).label is Relation.EQUIVALENT
 
 
 def test_plan_example_conflicting():

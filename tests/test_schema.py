@@ -61,11 +61,11 @@ def test_eval_case_json_roundtrip():
     case = EvalCase(
         case_id="c1",
         scenario_id="s1",
-        pair=FactPair(fact_a=make_fact("f1", "Revenue"), fact_b=make_fact("f2", "Net Revenue")),
+        pair=FactPair(fact_a=make_fact("f1", "Revenue"), fact_b=make_fact("f2", "Total Revenue")),
         label=Relation.EQUIVALENT,
         concept_same=True,
         scope_same=True,
-        rationale="Same entity, period and value; net revenue is the reported revenue line.",
+        rationale="Same entity, period and value; total revenue is the same revenue line.",
         source_kind=SourceKind.SYNTHETIC,
         split=Split.TEST,
         guideline_version="1.0",

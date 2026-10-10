@@ -6,7 +6,7 @@ owner's decision. Dates are from the board's Tracker sheet.
 
 ## Applied to the repository from the board
 
-- Generator vocabulary re-based on the board's Metric Definitions ([metric-definitions.md](metric-definitions.md)).
+- Generator vocabulary re-based on the v1 metric set ([metric-set-v1.md](metric-set-v1.md)), already merged to main.
 - Labeling guidelines v1.1 (a **draft for the owner's review**, task 1.3) adopt the board's rules: Net revenue is conditional, company-defined metrics need stated definitions, point-in-time metrics compare on as-of date.
 - Rules baseline and the LLM prompt updated to match (prompt version 2).
 - A bug fix surfaced while building the generator: `derive_label` returned `insufficient_evidence` for a different concept with an undeterminable scope, contradicting the guideline table. A different concept now settles the label.

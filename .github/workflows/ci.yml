@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest -q
+
+  # Mirrors what a new user does from a fresh clone: install, run the evaluator, generate data.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install ".[dev]"
+      - name: Evaluate the rules baseline on the example cases
+        run: python -m opslm.eval run --dataset data/examples/guideline_examples.jsonl --system rules --bootstrap 50
+      - name: Generate a small synthetic dataset
+        run: python -m opslm.datagen --scenarios 60 --seed 0 --out-dir "$RUNNER_TEMP/synthetic"
+      - name: Plan a labeling round from the generated test candidates
+        run: >
+          python -m opslm.labeling_cli plan
+          --candidates "$RUNNER_TEMP/synthetic/test_candidates.jsonl"
+          --reviewers reviewer_a reviewer_b --overlap 4 --out-dir "$RUNNER_TEMP/labeling"
+      - name: Estimate LLM spend without calling any model
+        run: >
+          python -m opslm.eval run --dataset data/examples/guideline_examples.jsonl
+          --system llm --provider openai-compatible --model example --estimate-only
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build
+      - name: Check the wheel contains the package
+        run: python -m zipfile -l dist/*.whl | grep -q "opslm/schema.py"

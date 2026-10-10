@@ -1,28 +1,27 @@
-"""Claude-backed system: the model judges meaning, code compares numbers.
+"""Model-agnostic LLM system: the model judges meaning, code compares numbers.
 
 The model answers two questions (same concept? same scope?). The numeric comparison and the
 final label come from ``opslm.labels``, exactly as for every other system, so a model can
-never call two facts equivalent when their normalized values disagree.
+never call two facts equivalent when their normalized values disagree. Provider details live
+in ``opslm.baselines.backends``; this class works with any ``ChatBackend``.
 
 Notes for evaluation integrity:
-- The model is never silently swapped. Server-side refusal fallbacks are deliberately NOT
-  enabled: a fallback would change which model produced a prediction mid-benchmark. A refusal
-  is recorded as an error for that case instead.
+- The model is never silently swapped: no provider-side fallbacks are enabled. A refusal is
+  recorded as an error for that case.
 - Numeric values are hidden from the model by default (``show_values=False``): concept and
   scope judgments must not depend on the numbers (labeling guidelines, "Same concept").
-- No sampling parameters are sent (current Claude models reject them) and thinking is left
-  at the model default. ``effort`` is set explicitly because defaults differ by model.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from opslm.baselines.backends import ChatBackend
 from opslm.baselines.prompts import (
     JUDGMENT_SCHEMA,
     PROMPT_SHA256,
@@ -32,8 +31,10 @@ from opslm.baselines.prompts import (
 from opslm.labels import derive_label, values_agree
 from opslm.schema import BusinessFact, Evidence, FactPair, Prediction
 
-# USD per million tokens (input, output). Snapshot of Anthropic list prices; verify before
-# quoting costs externally. Output tokens include thinking tokens.
+# Optional USD per million tokens (input, output) for hosted models. Prices change and differ
+# by platform, so these are a dated snapshot of Anthropic first-party list prices only; pass
+# ``prices=`` for anything else. Self-hosted models have no per-token price (None), and their
+# cost is compute time, which this harness does not attribute.
 PRICING_SNAPSHOT = "2026-10-06"
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "claude-fable-5-1": (10.0, 50.0),
@@ -100,45 +101,36 @@ class Usage:
     output_tokens: int = 0
     cost_usd: float | None = 0.0
     failed_calls: int = 0
-    _extra: dict[str, Any] = field(default_factory=dict)
 
 
-class ClaudePredictor:
-    """Frontier-LLM system. Requires ``pip install 'opslm[llm]'`` unless a client is injected."""
+class LLMPredictor:
+    """LLM-backed system over any ``ChatBackend``."""
 
     def __init__(
         self,
-        model: str = "claude-opus-5-5",
+        backend: ChatBackend,
         *,
-        effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium",
         show_values: bool = False,
         max_tokens: int = 8000,
-        client: Any = None,
+        prices: tuple[float, float] | None = None,
     ) -> None:
-        if client is None:
-            import anthropic  # deferred so the rest of opslm works without the SDK
-
-            client = anthropic.Anthropic()
-        self._client = client
-        self.model = model
-        self.effort = effort
+        self.backend = backend
         self.show_values = show_values
         self.max_tokens = max_tokens
-        self.name = f"claude:{model}:{effort}"
+        self.prices = prices if prices is not None else MODEL_PRICES.get(backend.model)
+        self.name = backend.label
         self.usage = Usage()
 
     def describe(self) -> dict[str, Any]:
         """Everything needed to reproduce the run, for the result artifact's ``config``."""
         return {
-            "provider": "anthropic",
-            "model": self.model,
-            "effort": self.effort,
+            **self.backend.describe(),
             "show_values": self.show_values,
             "max_tokens": self.max_tokens,
+            "prices_usd_per_mtok": list(self.prices) if self.prices else None,
+            "pricing_snapshot": PRICING_SNAPSHOT,
             "prompt_version": PROMPT_VERSION,
             "prompt_sha256": PROMPT_SHA256,
-            "pricing_snapshot": PRICING_SNAPSHOT,
-            "server_side_fallbacks": False,
             "calls": self.usage.calls,
             "failed_calls": self.usage.failed_calls,
             "input_tokens": self.usage.input_tokens,
@@ -147,43 +139,35 @@ class ClaudePredictor:
         }
 
     def _cost(self, input_tokens: int, output_tokens: int) -> float | None:
-        price = MODEL_PRICES.get(self.model)
-        if price is None:
+        if self.prices is None:
             return None
-        return (input_tokens * price[0] + output_tokens * price[1]) / 1_000_000
+        return (input_tokens * self.prices[0] + output_tokens * self.prices[1]) / 1_000_000
 
     def _call(self, pair: FactPair) -> tuple[Judgment, float | None]:
-        response = self._client.messages.create(
-            model=self.model,
+        c = self.backend.complete(
+            SYSTEM_PROMPT,
+            build_user_message(pair, show_values=self.show_values),
+            JUDGMENT_SCHEMA,
             max_tokens=self.max_tokens,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {"role": "user", "content": build_user_message(pair, show_values=self.show_values)}
-            ],
-            output_config={
-                "effort": self.effort,
-                "format": {"type": "json_schema", "schema": JUDGMENT_SCHEMA},
-            },
         )
-        usage = response.usage
-        cost = self._cost(usage.input_tokens, usage.output_tokens)
+        cost = self._cost(c.input_tokens, c.output_tokens)
         self.usage.calls += 1
-        self.usage.input_tokens += usage.input_tokens
-        self.usage.output_tokens += usage.output_tokens
+        self.usage.input_tokens += c.input_tokens
+        self.usage.output_tokens += c.output_tokens
         self.usage.cost_usd = (
             None if cost is None or self.usage.cost_usd is None else self.usage.cost_usd + cost
         )
 
-        if response.stop_reason == "refusal":
-            category = getattr(getattr(response, "stop_details", None), "category", None)
-            raise LLMError(f"model refused (category: {category})")
-        if response.stop_reason == "max_tokens":
-            raise LLMError("response hit max_tokens before finishing")
-        text = next((b.text for b in response.content if b.type == "text"), None)
-        if text is None:
-            raise LLMError("response contained no text block")
+        if c.finish == "refused":
+            raise LLMError(f"model refused ({c.detail})")
+        if c.finish == "length":
+            raise LLMError("response hit the token limit before finishing")
+        if c.finish == "other":
+            raise LLMError(f"unexpected stop: {c.detail}")
+        if not c.text:
+            raise LLMError("response contained no text")
         try:
-            return Judgment.model_validate_json(text), cost
+            return Judgment.model_validate_json(c.text), cost
         except ValueError as e:
             raise LLMError(f"unparseable model output: {e}") from e
 
@@ -223,26 +207,30 @@ class ClaudePredictor:
         )
 
 
-def estimate_cost(pairs: list[FactPair], model: str, *, show_values: bool = False) -> dict[str, Any]:
-    """Rough spend estimate before any API call. Token counts are approximations.
+def estimate_cost(
+    pairs: list[FactPair], prices: tuple[float, float] | None, *, show_values: bool = False
+) -> dict[str, Any]:
+    """Rough spend estimate before any call. Token counts are approximations.
 
-    Input is estimated at ~3.5 characters per token. Output (thinking plus the answer) is not
-    knowable in advance, so a low and high assumption bracket it.
+    Input is estimated at ~3.5 characters per token. Output (including any reasoning tokens)
+    is not knowable in advance, so a low and high per-pair assumption bracket it. With no
+    price (self-hosted or unknown model) only token counts are returned.
     """
-    price = MODEL_PRICES.get(model)
-    if price is None:
-        raise ValueError(f"no price on file for {model}; known: {sorted(MODEL_PRICES)}")
     in_tokens = sum(
         (len(SYSTEM_PROMPT) + len(build_user_message(p, show_values=show_values))) / 3.5
         for p in pairs
     )
-    out_low, out_high = 400 * len(pairs), 2500 * len(pairs)
-    cost = lambda out: (in_tokens * price[0] + out * price[1]) / 1_000_000
+    out_per_pair = (400, 2500)
+    cost_range = None
+    if prices is not None:
+        cost_range = tuple(
+            round((in_tokens * prices[0] + out * len(pairs) * prices[1]) / 1_000_000, 4)
+            for out in out_per_pair
+        )
     return {
-        "model": model,
         "pairs": len(pairs),
         "input_tokens_approx": round(in_tokens),
-        "output_tokens_assumed_per_pair": (400, 2500),
-        "cost_usd_range": (round(cost(out_low), 4), round(cost(out_high), 4)),
+        "output_tokens_assumed_per_pair": out_per_pair,
+        "cost_usd_range": cost_range,
         "pricing_snapshot": PRICING_SNAPSHOT,
     }

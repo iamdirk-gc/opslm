@@ -11,9 +11,10 @@ Status as of the evaluation-harness milestone. This document is for the project 
 | Labeling guidelines v1.0 | Written, **not yet tested by two reviewers** |
 | JSONL dataset loader with leakage checks | Built (`opslm.data`) |
 | Rules-based baseline | Built (`opslm.baselines.rules`) |
+| Claude-backed system (frontier LLM) | Built and tested against a mock; **never run against the real API** (`opslm.baselines.llm`) |
 | Evaluation harness (metrics, confidence intervals, paired test, run artifacts, CLI) | Built (`opslm.eval`) |
 | Benchmark dataset | **None.** Only nine illustrative examples, not benchmark data |
-| Frontier-LLM, base open-weight, fine-tuned systems | Not started |
+| Base open-weight and fine-tuned systems | Not started |
 | Synthetic data generator | Not started |
 | Docling / document pipeline | Not started (interface prepared via `SourceRef`) |
 
@@ -53,7 +54,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Models and budget
 
 15. **Base model family and size.** Suggested: one Apache-2.0 family (e.g. Qwen), a small size (1.5-3B) locally on the M2, optionally 7-8B on a rented GPU.
-16. **Frontier comparison model and API budget.** Not chosen. Rough token estimates are in the planning discussion; exact prices should be checked before committing a budget.
+16. **Frontier comparison model and API budget.** The system defaults to Claude Opus 5.5 at medium effort because it is the current general-purpose default, not because it is the best choice. Claude Fable 5.1 is Anthropic's most capable model and costs about 2.5x as much. Which one is "the frontier baseline" is a positioning decision: a stronger baseline makes a small model's win more credible. A single evaluation pass of 200 cases is estimated at roughly $1-10 on Opus 5.5 (the CLI prints an estimate first and will not spend without `--confirm-spend`), so budget is not the constraint. Prices in the code are a dated snapshot and must be re-checked before quoting costs publicly.
 17. **GPU quota** on the new Google Cloud project (`opslm-511123`) must be requested ahead of time and can take days. Not yet requested.
 
 ### Scope
@@ -68,6 +69,14 @@ Each item has what the engineering side did by default. Defaults can be changed;
 - Synonym table is small (about 20 concepts) and hand-written. Unlisted metrics become "cannot tell", so it over-predicts `insufficient_evidence` on real data.
 - Fiscal vs calendar periods with no dates may be judged the same.
 - Its 100% score on the nine examples is by construction: the rules and examples were written together.
+
+### Claude-backed system
+- **Never run for real.** No API credentials were available while building it, so it is tested only against a mock. The first real run may surface prompt or schema problems.
+- **Non-deterministic.** Current Claude models do not accept temperature or seed settings, so reruns on the same cases can differ. Report results from several runs (or at least state it) before claiming small differences.
+- **Numeric values are hidden from the model by default.** This follows the guidelines (concept never depends on the numbers) and lets code do the arithmetic. The tradeoff: if a source excerpt or definition only makes sense with the number, the model cannot use it. `--show-values` exists to test this.
+- **No silent model fallback.** Anthropic's server-side refusal fallback is intentionally off, because it would change which model answered mid-benchmark. A refusal is recorded as an error and scored wrong. If refusals turn out to be common on financial text, this needs a decision.
+- **One prompt, no tuning.** The prompt is a condensed copy of the guidelines plus five abbreviated examples. It was not iterated against data, and it must be updated by hand whenever the guidelines change (the prompt hash is recorded with each run, so stale prompts are detectable). Keep benchmark cases distinct from the prompt's examples.
+- **Cost covers the model call only** and uses a dated price snapshot. Output tokens include thinking tokens, which cannot be predicted, so estimates are a range.
 
 ### Schema
 - Each fact holds one numeric value. Ranges, "approximately", multi-value cells and non-numeric facts are not represented.

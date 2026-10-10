@@ -242,7 +242,7 @@ def estimate_cost(pairs: list[FactPair], model: str, *, show_values: bool = Fals
         "model": model,
         "pairs": len(pairs),
         "input_tokens_approx": round(in_tokens),
-        "output_tokens_assumed": (out_low, out_high),
+        "output_tokens_assumed_per_pair": (400, 2500),
         "cost_usd_range": (round(cost(out_low), 4), round(cost(out_high), 4)),
         "pricing_snapshot": PRICING_SNAPSHOT,
     }

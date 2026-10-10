@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"estimate ({est['pairs']} pairs, {est['model']}, prices as of "
                   f"{est['pricing_snapshot']}): ~{est['input_tokens_approx']:,} input tokens, "
                   f"${est['cost_usd_range'][0]:.2f}-${est['cost_usd_range'][1]:.2f} "
-                  f"assuming {est['output_tokens_assumed'][0]}-{est['output_tokens_assumed'][1]} "
+                  f"assuming {est['output_tokens_assumed_per_pair'][0]}-{est['output_tokens_assumed_per_pair'][1]} "
                   "output tokens per pair")
             if args.estimate_only:
                 return

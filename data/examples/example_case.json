@@ -1,0 +1,159 @@
+{
+  "input": {
+    "schema_version": "0.2.0",
+    "case_id": "c1",
+    "fact_a": {
+      "fact_id": "f1",
+      "metric_label": "Total revenue",
+      "metric_id": "revenue",
+      "entity": {
+        "name": "Acme Software Inc.",
+        "scope": "consolidated",
+        "segment": null
+      },
+      "period": {
+        "type": "duration",
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "as_of": null,
+        "fiscal_year": 2025,
+        "fiscal_quarter": null,
+        "is_ltm": false,
+        "label": "FY2025"
+      },
+      "quantity": {
+        "value": "42481000",
+        "unit": "currency",
+        "currency": "USD",
+        "reported_scale": "1000",
+        "raw_text": "42,481"
+      },
+      "accounting_basis": "gaap",
+      "reporting_status": "audited",
+      "stated_definition": null,
+      "evidence": [
+        {
+          "span_id": "s1",
+          "doc_id": "acme-10k-fy2025",
+          "page": 54,
+          "table_id": "t3",
+          "cell_ref": null,
+          "char_start": null,
+          "char_end": null,
+          "text": "Total revenue  42,481"
+        }
+      ],
+      "extraction": {
+        "extractor": "docling",
+        "extractor_version": null,
+        "confidence": 0.97
+      }
+    },
+    "fact_b": {
+      "fact_id": "f2",
+      "metric_label": "Sales",
+      "metric_id": "revenue",
+      "entity": {
+        "name": "Acme Software",
+        "scope": "consolidated",
+        "segment": null
+      },
+      "period": {
+        "type": "duration",
+        "start": null,
+        "end": null,
+        "as_of": null,
+        "fiscal_year": 2025,
+        "fiscal_quarter": null,
+        "is_ltm": false,
+        "label": "FY2025"
+      },
+      "quantity": {
+        "value": "44100000",
+        "unit": "currency",
+        "currency": "USD",
+        "reported_scale": "1000000",
+        "raw_text": "$44.1M"
+      },
+      "accounting_basis": "unknown",
+      "reporting_status": "unaudited",
+      "stated_definition": null,
+      "evidence": [
+        {
+          "span_id": "s2",
+          "doc_id": "acme-deck-q4fy25",
+          "page": 7,
+          "table_id": null,
+          "cell_ref": null,
+          "char_start": null,
+          "char_end": null,
+          "text": "FY2025 Sales: $44.1M"
+        }
+      ],
+      "extraction": {
+        "extractor": "docling",
+        "extractor_version": null,
+        "confidence": 0.91
+      }
+    },
+    "documents": [
+      {
+        "doc_id": "acme-10k-fy2025",
+        "company": "Acme Software",
+        "document_family": "acme-fy2025",
+        "doc_type": "10-K",
+        "title": null,
+        "source_url": "https://example.com/acme-10k",
+        "retrieved_at": null,
+        "content_sha256": null,
+        "license_note": "SEC filing, public"
+      },
+      {
+        "doc_id": "acme-deck-q4fy25",
+        "company": "Acme Software",
+        "document_family": "acme-fy2025",
+        "doc_type": "investor_presentation",
+        "title": null,
+        "source_url": null,
+        "retrieved_at": null,
+        "content_sha256": null,
+        "license_note": null
+      }
+    ],
+    "context": []
+  },
+  "output": {
+    "schema_version": "0.2.0",
+    "case_id": "c1",
+    "relationship": "conflicting",
+    "resolution_status": "resolved_with_conflict",
+    "canonical_value": {
+      "value": "42481000",
+      "unit": "currency",
+      "currency": "USD",
+      "reported_scale": "1000",
+      "raw_text": "42,481"
+    },
+    "selected_fact_id": "f1",
+    "conflicting_fact_ids": [
+      "f2"
+    ],
+    "reasons": [
+      "value_mismatch",
+      "synonym"
+    ],
+    "explanation": "Same metric, entity and period. The audited 10-K figure ($42.5M) is preferred; the deck reports $44.1M, unaudited.",
+    "evidence_refs": [
+      "s1",
+      "s2"
+    ],
+    "run": {
+      "system": "frontier_llm",
+      "model_name": null,
+      "latency_ms": 1840.0,
+      "input_tokens": null,
+      "output_tokens": null,
+      "cost_usd": 0.004
+    }
+  }
+}

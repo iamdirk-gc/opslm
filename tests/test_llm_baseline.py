@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 
 import pytest
 
@@ -7,32 +6,19 @@ from opslm.baselines.backends import Completion
 from opslm.baselines.llm import LLMError, LLMPredictor, build_user_message, estimate_cost
 from opslm.baselines.prompts import PROMPT_SHA256
 from opslm.eval.harness import evaluate
-from opslm.schema import (
-    BusinessFact,
-    FactPair,
-    Period,
-    PeriodType,
-    Relation,
-    Scale,
-    SourceRef,
-)
+from opslm.schema import Relationship
+from tests.factories import case_input
+from tests.factories import fact as make_fact
 
 
-def fact(fid, metric="Revenue", value="42.5", unit="USD"):
-    return BusinessFact(
-        fact_id=fid,
-        metric=metric,
-        value=Decimal(value),
-        unit=unit,
-        scale=Scale.MILLIONS,
-        entity="Acme Corp",
-        period=Period(label="FY2025", type=PeriodType.FISCAL_YEAR),
-        source=SourceRef(document_id="secret-doc-id", location="p.14"),
-    )
+def fact(fid, metric="Revenue", value="42.5", currency="USD"):
+    # evidence text without the number, so tests can check values stay hidden
+    return make_fact(fid, metric, value, currency=currency, doc="secret-doc-id",
+                     text=f"{metric} for FY2025")
 
 
 def pair(**kw):
-    return FactPair(fact_a=fact("a"), fact_b=fact("b", **kw))
+    return case_input(fact("a"), fact("b", **kw))
 
 
 def answer(concept="yes", scope="yes", fields=(), finish="stop", text=None, usage=(1000, 500)):
@@ -67,14 +53,16 @@ def predictor(*answers, **kw):
 def test_values_hidden_from_model_by_default():
     msg = build_user_message(pair(value="44.1"), show_values=False)
     assert "42.5" not in msg and "44.1" not in msg
-    assert "secret-doc-id" not in msg and "p.14" not in msg  # ids and locations omitted
+    assert "secret-doc-id" not in msg and "s-a" not in msg  # ids and locations omitted
+    assert json.loads(msg)["fact_a"]["evidence"] == [
+        {"document_type": "10-K", "text": "Revenue for FY2025"}]
     shown = build_user_message(pair(value="44.1"), show_values=True)
     assert "42.5" in shown and "44.1" in shown
 
 
 def test_backend_receives_prompt_schema_and_limit():
     p, backend = predictor(answer(), max_tokens=1234)
-    p.predict("c1", pair())
+    p.predict(pair())
     system, user, schema, limit = backend.calls[0]
     assert "concept_same" in system and "fact_a" in user
     assert schema["required"] and limit == 1234
@@ -83,39 +71,42 @@ def test_backend_receives_prompt_schema_and_limit():
 
 def test_equivalent_when_model_says_yes_and_values_agree():
     p, _ = predictor(answer())
-    pred = p.predict("c1", pair())
-    assert pred.label is Relation.EQUIVALENT and not pred.evidence
+    pred = p.predict(pair())
+    assert pred.relationship == Relationship.EQUIVALENT and pred.reasons == ["exact_match"]
+    assert pred.evidence_refs == ["s-a", "s-b"] and pred.check_references(pair()) == []
 
 
 def test_code_not_model_decides_value_conflicts():
     p, _ = predictor(answer())
-    pred = p.predict("c1", pair(value="44.1"))
-    assert pred.label is Relation.CONFLICTING and pred.values_agree is False
-    assert {e.field for e in pred.evidence} == {"value", "scale"}
+    pred = p.predict(pair(value="44.1"))
+    assert pred.relationship == Relationship.CONFLICTING and pred.values_agree is False
+    assert pred.reasons == ["value_mismatch"]
 
 
 def test_concept_no_is_related_and_cites_model_fields():
     p, _ = predictor(answer(concept="no", fields=["metric"]))
-    pred = p.predict("c1", pair(value="39.2"))
-    assert pred.label is Relation.RELATED_BUT_DIFFERENT
-    assert {e.field for e in pred.evidence} == {"metric"}
+    pred = p.predict(pair(value="39.2"))
+    assert pred.relationship == Relationship.RELATED_BUT_DIFFERENT
+    assert pred.reasons == ["definition_mismatch"]
 
 
 def test_cannot_tell_gives_insufficient_evidence():
     p, _ = predictor(answer(scope="cannot_tell", fields=["entity"]))
-    pred = p.predict("c1", pair())
-    assert pred.label is Relation.INSUFFICIENT_EVIDENCE and pred.scope_same is None
+    pred = p.predict(pair())
+    assert pred.relationship == Relationship.INSUFFICIENT_EVIDENCE and pred.scope_same is None
+    assert pred.reasons == ["missing_entity"]
 
 
 def test_currency_mismatch_is_insufficient():
     p, _ = predictor(answer())
-    assert p.predict("c1", pair(unit="EUR")).label is Relation.INSUFFICIENT_EVIDENCE
+    assert p.predict(pair(currency="EUR")).relationship == Relationship.INSUFFICIENT_EVIDENCE
 
 
 def test_cost_and_usage_accounting():
     p, _ = predictor(answer(usage=(10_000, 2_000)))
-    pred = p.predict("c1", pair())
-    assert pred.cost_usd == pytest.approx((10_000 * 4 + 2_000 * 20) / 1e6)
+    pred = p.predict(pair())
+    assert pred.run.cost_usd == pytest.approx((10_000 * 4 + 2_000 * 20) / 1e6)
+    assert pred.run.input_tokens == 10_000 and pred.run.model_name == "claude-opus-5-5"
     cfg = p.describe()
     assert cfg["input_tokens"] == 10_000 and cfg["prompt_sha256"] == PROMPT_SHA256
     assert cfg["provider"] == "fake"
@@ -123,14 +114,14 @@ def test_cost_and_usage_accounting():
 
 def test_explicit_prices_override_table():
     p, _ = predictor(answer(usage=(1_000_000, 1_000_000)), prices=(1.0, 2.0))
-    assert p.predict("c1", pair()).cost_usd == pytest.approx(3.0)
+    assert p.predict(pair()).run.cost_usd == pytest.approx(3.0)
 
 
 def test_unpriced_model_has_no_cost():
     backend = FakeBackend(answer())
     backend.model = "my-finetune"
     p = LLMPredictor(backend)
-    assert p.predict("c1", pair()).cost_usd is None
+    assert p.predict(pair()).run.cost_usd is None
     assert p.describe()["total_cost_usd"] is None
 
 
@@ -148,7 +139,7 @@ def test_unpriced_model_has_no_cost():
 def test_failures_raise_llm_error_and_count(bad, match):
     p, _ = predictor(bad)
     with pytest.raises(LLMError, match=match):
-        p.predict("c1", pair())
+        p.predict(pair())
     assert p.describe()["failed_calls"] == 1
 
 
@@ -192,3 +183,17 @@ def test_cli_estimate_only_makes_no_calls(capsys):
           "--provider", "vertex-gemini", "--model", "gemini-x", "--estimate-only"])
     out = capsys.readouterr().out
     assert "estimate: 9 pairs" in out and "cost unknown" in out
+
+
+def test_long_rationale_is_clipped_to_the_output_limit():
+    p, _ = predictor(answer(text=json.dumps({"rationale": "x" * 5000, "concept_same": "yes",
+                                             "scope_same": "yes", "deciding_fields": []})))
+    assert len(p.predict(pair()).explanation) == 1000
+
+
+def test_model_sees_structured_fields():
+    msg = json.loads(build_user_message(pair(), show_values=True))
+    a = msg["fact_a"]
+    assert a["metric_id"] == "revenue" and a["entity"]["scope"] == "consolidated"
+    assert a["period"] == {"type": "duration", "fiscal_year": 2025, "label": "FY2025"}
+    assert a["value"]["as_printed"] == "42.5" and a["basis"]["accounting"] == "unknown"

@@ -18,14 +18,14 @@ Fifteen scenario templates cover the cases on the project board:
 |---|---|
 | `synonym_equivalent` | Equivalent: naming variants, scale and rounding differences, entity and period formatting, negative values |
 | `rounding` | Equivalent within rounding (42.5M vs 42,540,000) and near-miss conflicts just outside it |
-| `value_conflict`, `restatement` | Conflicting: same concept, entity and period, different values (restatements carry an excerpt saying so) |
+| `value_conflict`, `restatement` | Conflicting: same concept, entity and period, different values (restatements carry evidence text saying so) |
 | `scale_error`, `currency_mismatch` | Conflicting (scale) and insufficient evidence (currency, no conversion) |
 | `marker_diff` | Related: Adjusted/Non-GAAP/Pro forma/Gross qualifiers, EBITDA vs Adjusted EBITDA |
 | `defined_diff` | Related: different measures with stated definitions (revenue vs ARR, gross margin vs gross profit, EBITDA vs Adjusted EBITDA, and others from the board) |
 | `company_defined` | ARR and Adjusted EBITDA: equivalent or conflicting when definitions match, related when they differ, insufficient evidence when a definition is missing |
 | `period_mismatch` | Related: FY vs quarter, FY vs prior FY, LTM vs FY, calendar vs fiscal year |
 | `entity_mismatch` | Related: parent vs subsidiary vs segment |
-| `missing_entity`, `missing_period` | Insufficient evidence; the excerpt never states the missing field |
+| `missing_entity`, `missing_period` | Insufficient evidence; the fact's evidence text never states the missing field |
 | `ambiguous_name`, `ambiguous_resolved` | "Net revenue", "Core revenue" without a definition (insufficient) and with a resolving definition |
 
 Many related and conflicting templates include a **same-value trap** (identical numbers that must
@@ -36,14 +36,18 @@ not be merged) alongside different-value cases.
 - **Labels follow the guidelines by construction.** Each pair declares the guideline judgments
   (concept, scope); the label is derived with the same `derive_label` and `values_agree` code the
   systems use, and generation fails if it differs from what the template expects. `EvalCase`
-  validation also rejects inconsistent reasons and fields.
+  validation also rejects evidence references that are not in the input.
 - **No leakage.** Scenarios, facts and identical pairs never cross splits (the dataset loader's
-  checks run on the output).
+  checks run on the output). Each scenario's documents share one `document_family`, which is
+  what the loader keeps inside one split.
+- **`metric_id` is a hint, not the answer.** Each fact's id comes from its name alone, as a
+  name-based mapper would assign it. "Adjusted EBITDA" with different stated adjustments keeps
+  `adjusted_ebitda` on both facts, and "Net revenue" maps to `other`.
 - **Held-out vocabulary.** Some naming variants (for example "Turnover", "GM", "EBITDA
   (adjusted)") appear only in validation and test scenarios, so those splits measure
   generalization to unseen surface forms.
 - **Not circular.** The vocabulary is independent of the rules baseline. A test fails if the
-  baseline scores above 80% on the training data (it scores roughly 50%).
+  baseline scores above 80% on the training data (it scores roughly two thirds).
 - **Deterministic** for a given seed and generator version; the manifest records both, plus
   label counts and dataset hashes.
 
@@ -51,7 +55,7 @@ not be merged) alongside different-value cases.
 
 | File | Contents | Use |
 |---|---|---|
-| `train.jsonl`, `validation.jsonl` | `EvalCase` labeled by construction, `reviewed: false` | Training and validation |
+| `train.jsonl`, `validation.jsonl` | `EvalCase` labeled by construction, `labeled_by: generator` | Training and validation |
 | `test_candidates.jsonl` | Unlabeled `CandidatePair` | Input to the labeling workflow ([labeling-workflow.md](labeling-workflow.md)) |
 | `test_construction_labels.jsonl` | The generator's labels for the test candidates | **Quality check only.** Never gold labels |
 | `manifest.json` | Version, seed, counts, distributions, hashes | Provenance |

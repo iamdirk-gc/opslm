@@ -3,12 +3,14 @@
 Reviewers work in Excel or Google Sheets, not in code:
 
 1. ``plan_batches`` / ``export_review_sheet``: candidate pairs -> a sheet per reviewer.
-2. Each reviewer records the three guideline judgments per row (the label is derived, never typed).
+2. Each reviewer records the two guideline judgments per row (the label is derived, never typed),
+   the reasons, and the evidence spans that support the label.
 3. ``import_review_sheet``: validate the sheet and turn it into ``Review`` records. Problems come
    back as plain-language messages with sheet row numbers.
 4. ``compare_reviews``: agreement (Cohen's kappa) on the shared overlap and a disagreement sheet
    for the adjudication meeting, where the deciding rule is written down.
-5. ``finalize``: reviews plus resolutions -> ``EvalCase`` records, validated for leakage.
+5. ``finalize``: reviews plus resolutions -> ``EvalCase`` records (input + gold label), validated
+   for leakage.
 
 The sheet is only a transport. Reviewers' edits to the read-only columns are ignored on import
 because rows are matched on ``case_id`` and facts come from the candidate file.
@@ -30,11 +32,12 @@ from opslm.data import validate_cases
 from opslm.labels import GUIDELINE_VERSION, derive_label, values_agree
 from opslm.schema import (
     BusinessFact,
-    DiscrepancyReason,
     EvalCase,
-    FactPair,
-    Relation,
-    SourceKind,
+    GoldLabel,
+    ReasonCode,
+    ReconciliationInput,
+    Relationship,
+    Source,
     Split,
 )
 
@@ -49,12 +52,14 @@ class _Model(BaseModel):
 class CandidatePair(_Model):
     """An unlabeled pair awaiting review, with the metadata the final case will carry."""
 
-    case_id: str
-    scenario_id: str
-    pair: FactPair
-    source_kind: SourceKind
+    input: ReconciliationInput
+    source: Source
     split: Split
     tags: tuple[str, ...] = ()
+
+    @property
+    def case_id(self) -> str:
+        return self.input.case_id
 
 
 class Review(_Model):
@@ -64,8 +69,8 @@ class Review(_Model):
     reviewer: str
     concept_same: bool | None
     scope_same: bool | None
-    discrepancy_reason: DiscrepancyReason | None
-    discriminating_fields: tuple[str, ...]
+    reasons: tuple[ReasonCode, ...]  # primary first
+    evidence_refs: tuple[str, ...]
     rationale: str
     flag: str = ""
 
@@ -90,34 +95,41 @@ def write_reviews(path: str | Path, reviews: Iterable[Review]) -> None:
         f.writelines(r.model_dump_json() + "\n" for r in sorted(reviews, key=lambda r: r.case_id))
 
 
-def derived_label(candidate: CandidatePair, review: Review) -> Relation:
-    pair = candidate.pair
-    return derive_label(
-        review.concept_same, review.scope_same, values_agree(pair.fact_a, pair.fact_b)
-    )
+def _values_agree(c: CandidatePair) -> bool | None:
+    return values_agree(c.input.fact_a.quantity, c.input.fact_b.quantity)
+
+
+def derived_label(candidate: CandidatePair, review: Review) -> Relationship:
+    return derive_label(review.concept_same, review.scope_same, _values_agree(candidate))
+
+
+def _family(c: CandidatePair) -> str:
+    return ", ".join(sorted(c.input.document_families()))
 
 
 # --- sheet layout ----------------------------------------------------------------
 
-_FACT_COLS = ("metric", "value", "scale", "unit", "entity", "period", "definition",
-              "qualifiers", "source", "excerpt")
-READONLY = ["case_id", "scenario_id", "values_agree"] + [
+_FACT_COLS = ("metric", "metric_id", "value", "entity", "period", "definition", "basis",
+              "source", "evidence")
+READONLY = ["case_id", "document_family", "values_agree"] + [
     f"{side}_{c}" for side in ("A", "B") for c in _FACT_COLS
 ]
-REVIEWER_COLS = ["concept_same", "scope_same", "discrepancy_reason", "discriminating_fields",
-                 "rationale", "flag"]
+REVIEWER_COLS = ["concept_same", "scope_same", "primary_reason", "other_reasons",
+                 "evidence_refs", "rationale", "flag"]
 REVIEW_COLUMNS = READONLY + REVIEWER_COLS
+REASONS = [r.value for r in ReasonCode]
 DROPDOWNS = {
     "concept_same": list(VERDICTS),
     "scope_same": list(VERDICTS),
-    "discrepancy_reason": [r.value for r in DiscrepancyReason],
+    "primary_reason": REASONS,
 }
-RESOLUTION_COLS = ["resolved_concept_same", "resolved_scope_same", "resolved_discrepancy_reason",
-                   "resolved_discriminating_fields", "resolved_rationale", "rule_decided"]
+RESOLUTION_COLS = ["resolved_concept_same", "resolved_scope_same", "resolved_primary_reason",
+                   "resolved_other_reasons", "resolved_evidence_refs", "resolved_rationale",
+                   "rule_decided"]
 RESOLUTION_DROPDOWNS = {
     "resolved_concept_same": list(VERDICTS),
     "resolved_scope_same": list(VERDICTS),
-    "resolved_discrepancy_reason": [r.value for r in DiscrepancyReason],
+    "resolved_primary_reason": REASONS,
 }
 _REVIEW_PREFIXES = ("r1", "r2")
 DISAGREEMENT_COLUMNS = (
@@ -132,39 +144,62 @@ def _period_text(fact: BusinessFact) -> str:
     p = fact.period
     if p is None:
         return ""
-    text = f"{p.label} [{p.type.value}]"
+    if p.type == "instant":
+        return f"{p.label} [as of {p.as_of or '?'}]"
+    details = [f"FY{p.fiscal_year}" if p.fiscal_year else "",
+               f"Q{p.fiscal_quarter}" if p.fiscal_quarter else "", "LTM" if p.is_ltm else ""]
     if p.start or p.end:
-        text += f" {p.start or '?'} to {p.end or '?'}"
-    return text
+        details.append(f"{p.start or '?'} to {p.end or '?'}")
+    shown = " ".join(d for d in details if d)
+    return f"{p.label} [{shown}]" if shown else p.label
 
 
-def _fact_cells(side: str, fact: BusinessFact) -> dict[str, str]:
-    src = " ".join(x for x in (fact.source.document_type, fact.source.location) if x)
+def _value_text(fact: BusinessFact) -> str:
+    q = fact.quantity
+    unit = q.currency if q.unit == "currency" else q.unit
+    return f"{q.raw_text} (= {q.value:,f} {unit})"
+
+
+def _entity_text(fact: BusinessFact) -> str:
+    e = fact.entity
+    if e is None:
+        return ""
+    return e.name + (f" [{e.scope}" + (f": {e.segment}" if e.segment else "") + "]"
+                     if e.scope != "consolidated" or e.segment else "")
+
+
+def _fact_cells(side: str, fact: BusinessFact, doc_types: dict[str, str]) -> dict[str, str]:
+    first = fact.evidence[0]
+    loc = first.cell_ref or (f"p.{first.page}" if first.page else "")
     return {
-        f"{side}_metric": fact.metric,
-        f"{side}_value": "" if fact.value is None else str(fact.value),
-        f"{side}_scale": fact.scale.name.lower(),
-        f"{side}_unit": fact.unit or "",
-        f"{side}_entity": fact.entity or "",
+        f"{side}_metric": fact.metric_label,
+        f"{side}_metric_id": fact.metric_id,
+        f"{side}_value": _value_text(fact),
+        f"{side}_entity": _entity_text(fact),
         f"{side}_period": _period_text(fact),
-        f"{side}_definition": fact.definition or "",
-        f"{side}_qualifiers": ", ".join(fact.qualifiers),
-        f"{side}_source": src,
-        f"{side}_excerpt": fact.source.excerpt or "",
+        f"{side}_definition": fact.stated_definition or "",
+        f"{side}_basis": f"{fact.accounting_basis}, {fact.reporting_status}",
+        f"{side}_source": " ".join(x for x in (doc_types.get(first.doc_id), loc) if x),
+        f"{side}_evidence": "\n".join(f"[{s.span_id}] {s.text}" for s in fact.evidence),
     }
 
 
+def _candidate_cells(c: CandidatePair) -> dict[str, str]:
+    doc_types = {d.doc_id: d.doc_type for d in c.input.documents}
+    return {**_fact_cells("A", c.input.fact_a, doc_types),
+            **_fact_cells("B", c.input.fact_b, doc_types)}
+
+
 def _agree_text(c: CandidatePair) -> str:
-    agree = values_agree(c.pair.fact_a, c.pair.fact_b)
+    agree = _values_agree(c)
     return "not comparable" if agree is None else "yes" if agree else "no"
 
 
 def review_rows(candidates: Iterable[CandidatePair]) -> list[dict[str, str]]:
     rows = []
     for c in candidates:
-        row = {"case_id": c.case_id, "scenario_id": c.scenario_id, "values_agree": _agree_text(c)}
-        row.update(_fact_cells("A", c.pair.fact_a))
-        row.update(_fact_cells("B", c.pair.fact_b))
+        row = {"case_id": c.case_id, "document_family": _family(c), "values_agree": _agree_text(c)}
+        row.update(_candidate_cells(c))
         row.update(dict.fromkeys(REVIEWER_COLS, ""))
         rows.append(row)
     return rows
@@ -271,15 +306,12 @@ def _verdict(text: str) -> tuple[bool | None, bool]:
     return (_VERDICT_ALIASES[key], True) if key in _VERDICT_ALIASES else (None, False)
 
 
-def _fields(text: str) -> tuple[list[str], list[str]]:
-    names = [t for t in re.split(r"[,;]", text) if t.strip()]
-    names = [t.strip().lower() for t in names]
-    bad = [n for n in names if n not in BusinessFact.model_fields]
-    return names, bad
+def _items(text: str) -> list[str]:
+    return [t.strip() for t in re.split(r"[,;\s]+", text) if t.strip()]
 
 
 def _parse_judgments(
-    row: dict[str, str], prefix: str, pair: FactPair, where: str
+    row: dict[str, str], prefix: str, candidate: CandidatePair, where: str
 ) -> tuple[dict[str, Any] | None, list[str]]:
     """Shared validation for review rows (prefix '') and resolution rows ('resolved_')."""
     col = lambda name: row.get(f"{prefix}{name}", "").strip()
@@ -294,32 +326,31 @@ def _parse_judgments(
     if problems:
         return None, problems
 
-    label = derive_label(verdicts["concept_same"], verdicts["scope_same"],
-                         values_agree(pair.fact_a, pair.fact_b))
-    reason_text = col("discrepancy_reason").lower()
-    reason = None
-    if reason_text:
-        try:
-            reason = DiscrepancyReason(reason_text)
-        except ValueError:
-            problems.append(f"{where}: unknown {prefix}discrepancy_reason {reason_text!r}")
-    if label is Relation.EQUIVALENT and reason_text:
-        problems.append(f"{where}: your judgments give 'equivalent', which takes no discrepancy_reason")
-    if label is not Relation.EQUIVALENT and not reason_text:
-        problems.append(f"{where}: your judgments give '{label.value}'; discrepancy_reason is required")
-
-    fields, bad = _fields(col("discriminating_fields"))
+    label = derive_label(verdicts["concept_same"], verdicts["scope_same"], _values_agree(candidate))
+    primary = col("primary_reason").lower()
+    reasons = ([primary] if primary else []) + [r.lower() for r in _items(col("other_reasons"))]
+    if not primary:
+        problems.append(f"{where}: your judgments give '{label.value}'; {prefix}primary_reason "
+                        "is required")
+    bad = [r for r in reasons if r not in REASONS]
     if bad:
-        problems.append(f"{where}: unknown discriminating_fields {bad}; valid names are "
-                        f"{', '.join(BusinessFact.model_fields)}")
-    if label is not Relation.EQUIVALENT and not fields and not bad:
-        problems.append(f"{where}: discriminating_fields is required for '{label.value}'")
+        problems.append(f"{where}: unknown reason {', '.join(map(repr, bad))}; see the "
+                        "primary_reason dropdown for valid codes")
+
+    refs = _items(col("evidence_refs"))
+    unknown = [r for r in refs if r not in candidate.input.span_ids()]
+    if unknown:
+        problems.append(f"{where}: unknown evidence_refs {unknown}; this pair's spans are "
+                        f"{', '.join(sorted(candidate.input.span_ids()))}")
+    if label != Relationship.INSUFFICIENT_EVIDENCE and not refs and not unknown:
+        problems.append(f"{where}: evidence_refs is required for '{label.value}' (list the span "
+                        "ids shown in brackets in the evidence columns)")
     if not col("rationale"):
         problems.append(f"{where}: rationale is required")
     if problems:
         return None, problems
     return {"concept_same": verdicts["concept_same"], "scope_same": verdicts["scope_same"],
-            "discrepancy_reason": reason, "discriminating_fields": tuple(fields),
+            "reasons": tuple(dict.fromkeys(reasons)), "evidence_refs": tuple(refs),
             "rationale": col("rationale")}, []
 
 
@@ -343,7 +374,7 @@ def import_review_sheet(
         if not any(row.get(c, "").strip() for c in REVIEWER_COLS if c != "flag"):
             unlabeled.append(case_id)
             continue
-        parsed, errs = _parse_judgments(row, "", by_id[case_id].pair, f"row {n} ({case_id})")
+        parsed, errs = _parse_judgments(row, "", by_id[case_id], f"row {n} ({case_id})")
         problems += errs
         if parsed:
             reviews.append(Review(case_id=case_id, reviewer=reviewer, flag=row.get("flag", ""),
@@ -448,16 +479,14 @@ def disagreement_rows(
         c = by_id[case_id]
         row = {"case_id": case_id, "values_agree": _agree_text(c),
                "why": "disagree" if case_id in agreement.disagreements else "flagged"}
-        row.update(_fact_cells("A", c.pair.fact_a))
-        row.update(_fact_cells("B", c.pair.fact_b))
+        row.update(_candidate_cells(c))
         for prefix, review in zip(_REVIEW_PREFIXES, (ra[case_id], rb[case_id]), strict=True):
             row[f"{prefix}_reviewer"] = review.reviewer
             row[f"{prefix}_concept_same"] = _vtext(review.concept_same)
             row[f"{prefix}_scope_same"] = _vtext(review.scope_same)
-            row[f"{prefix}_discrepancy_reason"] = (
-                review.discrepancy_reason.value if review.discrepancy_reason else ""
-            )
-            row[f"{prefix}_discriminating_fields"] = ", ".join(review.discriminating_fields)
+            row[f"{prefix}_primary_reason"] = review.reasons[0] if review.reasons else ""
+            row[f"{prefix}_other_reasons"] = ", ".join(review.reasons[1:])
+            row[f"{prefix}_evidence_refs"] = ", ".join(review.evidence_refs)
             row[f"{prefix}_rationale"] = review.rationale
             row[f"{prefix}_flag"] = review.flag
         row.update(dict.fromkeys(RESOLUTION_COLS, ""))
@@ -490,7 +519,7 @@ def import_resolutions(
             unlabeled.append(case_id)
             continue
         where = f"row {n} ({case_id})"
-        parsed, errs = _parse_judgments(row, "resolved_", by_id[case_id].pair, where)
+        parsed, errs = _parse_judgments(row, "resolved_", by_id[case_id], where)
         if not row.get("rule_decided", "").strip():
             errs.append(f"{where}: rule_decided is required (write down the rule that settled it)")
         problems += errs
@@ -521,8 +550,9 @@ def finalize(
     """Turn reviews into evaluation cases.
 
     A resolution wins. Otherwise reviewers must agree on both judgments (the first reviewer's
-    reason, fields and rationale are kept). Unreviewed candidates are skipped and reported;
-    unresolved disagreements are problems. The result is checked for split leakage.
+    reasons, evidence and rationale are kept; the second is recorded as ``reviewed_by``).
+    Unreviewed candidates are skipped and reported; unresolved disagreements are problems.
+    The result is checked for split leakage.
     """
     candidates = list(candidates)
     resolved = {r.case_id: r for r in resolutions}
@@ -535,9 +565,9 @@ def finalize(
     problems: list[str] = []
     unlabeled: list[str] = []
     for c in candidates:
+        rs = reviews.get(c.case_id, [])
         final = resolved.get(c.case_id)
         if final is None:
-            rs = reviews.get(c.case_id, [])
             if not rs:
                 unlabeled.append(c.case_id)
                 continue
@@ -545,16 +575,21 @@ def finalize(
                 problems.append(f"{c.case_id}: reviewers disagree and no resolution was provided")
                 continue
             final = rs[0]
-        label = derived_label(c, final)
+        if final.reviewer == RESOLVER:
+            labeled_by = ", ".join(r.reviewer for r in rs) or RESOLVER
+            reviewed_by, note = RESOLVER, final.flag
+        else:
+            labeled_by = final.reviewer
+            reviewed_by, note = (", ".join(r.reviewer for r in rs[1:]) or None), None
         try:
-            cases.append(EvalCase(
-                case_id=c.case_id, scenario_id=c.scenario_id, pair=c.pair, label=label,
+            cases.append(EvalCase(input=c.input, gold=GoldLabel(
+                case_id=c.case_id, relationship=derived_label(c, final),
                 concept_same=final.concept_same, scope_same=final.scope_same,
-                rationale=final.rationale, source_kind=c.source_kind, split=c.split,
-                reviewed=True, guideline_version=GUIDELINE_VERSION,
-                discrepancy_reason=final.discrepancy_reason,
-                discriminating_fields=final.discriminating_fields, tags=c.tags,
-            ))
+                reasons=list(final.reasons), required_evidence_refs=list(final.evidence_refs),
+                rationale=final.rationale, tags=list(c.tags), split=c.split, source=c.source,
+                labeled_by=labeled_by, reviewed_by=reviewed_by, adjudication_note=note,
+                guideline_version=GUIDELINE_VERSION,
+            )))
         except ValueError as e:
             problems.append(f"{c.case_id}: {e}")
     problems += validate_cases(cases)

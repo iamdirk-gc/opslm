@@ -14,7 +14,7 @@ from opslm.datagen.generate import GeneratorError, generate, write_outputs
 from opslm.eval.harness import evaluate
 from opslm.labeling import Review, export_review_sheet, read_candidates
 from opslm.labels import GUIDELINE_VERSION
-from opslm.schema import Relation, Split
+from opslm.schema import CONSTRUCTION_LABELER, Relationship, Split
 
 HELDOUT = {n for c in V.CONCEPTS.values() for n in c.heldout}
 
@@ -37,13 +37,14 @@ def test_split_sizes_and_scenarios_never_span_splits(big):
     seen = {}
     for name, cases in (("train", big.train), ("val", big.validation), ("test", big.test_construction)):
         for c in cases:
-            assert seen.setdefault(c.scenario_id, name) == name
+            (family,) = c.input.document_families()  # one family (= scenario) per case
+            assert seen.setdefault(family, name) == name
 
 
 def test_every_label_is_well_represented(big):
-    counts = Counter(c.label for c in big.train)
+    counts = Counter(c.gold.relationship for c in big.train)
     total = sum(counts.values())
-    for label in Relation:
+    for label in Relationship:
         assert counts[label] / total > 0.12, (label, counts)
 
 
@@ -53,22 +54,45 @@ def test_every_template_appears(big):
 
 
 def test_heldout_names_only_outside_train(big):
-    train_names = {f.metric for c in big.train for f in (c.pair.fact_a, c.pair.fact_b)}
+    train_names = {f.metric_label for c in big.train for f in (c.input.fact_a, c.input.fact_b)}
     assert not train_names & HELDOUT
-    later = {f.metric for c in big.validation + big.test_construction
-             for f in (c.pair.fact_a, c.pair.fact_b)}
+    later = {f.metric_label for c in big.validation + big.test_construction
+             for f in (c.input.fact_a, c.input.fact_b)}
     assert later & HELDOUT
 
 
-def test_cases_are_unreviewed_and_use_current_guidelines(big):
+def test_cases_are_generator_labeled_and_use_current_guidelines(big):
     for c in big.train + big.validation + big.test_construction:
-        assert not c.reviewed and c.guideline_version == GUIDELINE_VERSION
-        assert c.source_kind.value == "synthetic"
+        assert c.gold.labeled_by == CONSTRUCTION_LABELER and not c.human_labeled
+        assert c.gold.guideline_version == GUIDELINE_VERSION and c.gold.source == "synthetic"
+
+
+def test_gold_labels_have_reasons_and_cite_both_facts(big):
+    for c in big.train + big.validation + big.test_construction:
+        assert c.gold.reasons and c.gold.tags[0] in S.TEMPLATES
+        assert set(c.gold.required_evidence_refs) == c.input.span_ids()
+    by_kind = {c.gold.tags[0]: c.gold.reasons[0] for c in big.train}
+    assert by_kind["missing_entity"] == "missing_entity"
+    assert by_kind["missing_period"] == "missing_period"
+    assert by_kind["currency_mismatch"] == "currency_mismatch"
+    assert by_kind["restatement"] == "restatement"
+    assert by_kind["entity_mismatch"] == "entity_mismatch"
+
+
+def test_metric_ids_come_from_names_not_ground_truth(big):
+    for c in big.train:
+        for f in (c.input.fact_a, c.input.fact_b):
+            assert f.metric_id == V.metric_id_for(f.metric_label)
+    ebitda = [c for c in big.train if c.gold.tags[0] == "company_defined"
+              and c.gold.relationship == "related_but_different"
+              and c.input.fact_a.metric_id == "adjusted_ebitda"]
+    # different stated adjustments: same id, different concept
+    assert all(c.input.fact_b.metric_id == "adjusted_ebitda" for c in ebitda)
 
 
 def test_test_candidates_match_construction_cases(big):
     assert {c.case_id for c in big.test_candidates} == {c.case_id for c in big.test_construction}
-    assert all(c.split is Split.TEST for c in big.test_candidates)
+    assert all(c.split == Split.TEST for c in big.test_candidates)
 
 
 def test_rules_baseline_is_not_at_ceiling(big):
@@ -77,36 +101,57 @@ def test_rules_baseline_is_not_at_ceiling(big):
     assert run.metrics["accuracy"].value < 0.8
 
 
-def test_missing_entity_excerpts_do_not_leak_the_entity(big):
-    for c in big.train + big.validation + big.test_construction:
-        for me, other in ((c.pair.fact_a, c.pair.fact_b), (c.pair.fact_b, c.pair.fact_a)):
-            if me.entity is None and me.source.excerpt and other.entity:
-                assert other.entity.split()[0].lower() not in me.source.excerpt.lower()
+def _pairs(cases):
+    for c in cases:
+        yield c.input.fact_a, c.input.fact_b
+        yield c.input.fact_b, c.input.fact_a
 
 
-def test_missing_period_excerpts_do_not_leak_the_period(big):
-    for c in big.train:
-        for me, other in ((c.pair.fact_a, c.pair.fact_b), (c.pair.fact_b, c.pair.fact_a)):
-            if me.period is None and me.source.excerpt and other.period:
-                assert other.period.label not in me.source.excerpt
+def test_missing_entity_evidence_does_not_leak_the_entity(big):
+    checked = 0
+    for me, other in _pairs(big.train + big.validation + big.test_construction):
+        if me.entity is None and other.entity:
+            assert other.entity.name.split()[0].lower() not in me.evidence[0].text.lower()
+            checked += 1
+    assert checked
+
+
+def test_missing_period_evidence_does_not_leak_the_period(big):
+    checked = 0
+    for me, other in _pairs(big.train):
+        if me.period is None and other.period:
+            assert other.period.label not in me.evidence[0].text
+            checked += 1
+    assert checked
 
 
 def test_point_in_time_concepts_use_as_of_dates(big):
     seen = 0
     for c in big.train:
-        for f in (c.pair.fact_a, c.pair.fact_b):
-            if f.metric in ("ARR", "Annual recurring revenue") and f.period:
-                assert f.period.type.value == "point_in_time" and f.period.start == f.period.end
+        for f in (c.input.fact_a, c.input.fact_b):
+            if f.metric_label in ("ARR", "Annual recurring revenue") and f.period:
+                assert f.period.type == "instant" and f.period.as_of is not None
                 seen += 1
     assert seen
 
 
-def test_negative_net_income_is_signed_and_uses_parentheses_in_excerpts(big):
-    found = [f for c in big.train for f in (c.pair.fact_a, c.pair.fact_b)
-             if f.value is not None and f.value < 0]
-    assert found and all(f.metric.startswith(("Net income", "Net earnings", "Net loss",
-                                              "Profit")) for f in found)
-    assert any(f.source.excerpt and "(" in f.source.excerpt for f in found)
+def test_quantities_are_normalized_to_base_units(big):
+    for c in big.train:
+        for f in (c.input.fact_a, c.input.fact_b):
+            q = f.quantity
+            assert q.value == q.reported_value * q.reported_scale
+            assert (q.unit == "currency") == (q.currency is not None)
+
+
+def test_negative_net_income_is_signed_and_uses_parentheses(big):
+    found = [f for c in big.train for f in (c.input.fact_a, c.input.fact_b) if f.quantity.value < 0]
+    assert found and all(f.metric_label.startswith(("Net income", "Net earnings", "Net loss",
+                                                    "Profit")) for f in found)
+    assert all(f.quantity.raw_text.startswith("(") for f in found)
+    assert any("(" in f.evidence[0].text for f in found)
+    neg_equivalent = [c for c in big.train if c.gold.relationship == "equivalent"
+                      and c.input.fact_a.quantity.value < 0]
+    assert neg_equivalent and all("sign_convention" in c.gold.reasons for c in neg_equivalent)
 
 
 def test_wrong_template_expectation_fails_loudly(monkeypatch):
@@ -116,7 +161,7 @@ def test_wrong_template_expectation_fails_loudly(monkeypatch):
         kind, pairs = original(ctx)
         from dataclasses import replace
 
-        return kind, [replace(p, expect=Relation.CONFLICTING) for p in pairs]
+        return kind, [replace(p, expect=Relationship.CONFLICTING) for p in pairs]
 
     monkeypatch.setitem(S.TEMPLATES, "synonym_equivalent", (broken, weight))
     with pytest.raises(GeneratorError, match="template expected conflicting"):
@@ -132,15 +177,15 @@ def test_write_outputs_and_downstream_loading(tmp_path):
     assert len(cands) == len(r.test_candidates)
     manifest = json.loads(paths["manifest"].read_text())
     assert manifest["generator_version"] and "must not be used as gold" in manifest["notes"]
-    assert not any(c.reviewed for c in read_cases(paths["test_construction_labels"]))
+    assert not any(c.human_labeled for c in read_cases(paths["test_construction_labels"]))
     export_review_sheet(tmp_path / "sheet.xlsx", cands[:5])  # feeds the labeling workflow
 
 
 def test_audit_against_construction_labels():
     r = generate(60, seed=7)
-    perfect = [Review(case_id=c.case_id, reviewer="h", concept_same=c.concept_same,
-                      scope_same=c.scope_same, discrepancy_reason=c.discrepancy_reason,
-                      discriminating_fields=c.discriminating_fields, rationale="r")
+    perfect = [Review(case_id=c.case_id, reviewer="h", concept_same=c.gold.concept_same,
+                      scope_same=c.gold.scope_same, reasons=tuple(c.gold.reasons),
+                      evidence_refs=tuple(c.gold.required_evidence_refs), rationale="r")
                for c in r.test_construction]
     ok = compare_to_construction(perfect, r.test_construction, r.test_candidates)
     assert ok["agreement"] == 1.0 and ok["n"] == len(perfect) and not ok["disagreements"]
@@ -158,8 +203,9 @@ def test_fiscal_calendar_dates_are_consistent():
     assert cal.ltm().end == cal.quarter(3, dated=True).end
     import random
 
-    assert cal.asof(random.Random(0)).end == cal.end
-    assert cal.asof(random.Random(0), quarter=2).end == date(2024, 12, 31)
+    assert cal.asof(random.Random(0)).as_of == cal.end
+    assert cal.asof(random.Random(0), quarter=2).as_of == date(2024, 12, 31)
+    assert cal.quarter(2, dated=False).fiscal_quarter == 2 and cal.ltm().is_ltm
 
 
 def test_amount_text_formats_negatives_with_parentheses():
@@ -167,7 +213,7 @@ def test_amount_text_formats_negatives_with_parentheses():
 
     ctx = S.Ctx(random.Random(0), "s", V.Company("Acme", "Inc"), V.FiscalCalendar(2025, 12),
                 heldout=False)
-    from opslm.schema import Scale
+    Scale = S.Scale
 
     assert ctx.amount_text(Decimal("-5.2"), Scale.MILLIONS, "USD") == "($5.2 million)"
     assert ctx.amount_text(Decimal("12.5"), Scale.UNITS, "percent") == "12.5%"

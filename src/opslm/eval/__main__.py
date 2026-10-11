@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> None:
                 if args.price_in is not None and args.price_out is not None
                 else MODEL_PRICES.get(args.model)
             )
-            est = estimate_cost([c.pair for c in cases], prices, show_values=args.show_values)
+            est = estimate_cost([c.input for c in cases], prices, show_values=args.show_values)
             lo, hi = est["output_tokens_assumed_per_pair"]
             cost = (
                 f"${est['cost_usd_range'][0]:.2f}-${est['cost_usd_range'][1]:.2f}"

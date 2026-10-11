@@ -1,7 +1,8 @@
 """Generate synthetic scenarios and turn them into labeled datasets.
 
 Outputs, by split:
-- train, validation: ``EvalCase`` records labeled by construction (``reviewed`` is False).
+- train, validation: ``EvalCase`` records labeled by construction (``labeled_by`` is
+  "generator").
 - test: ``CandidatePair`` records for human review via the labeling workflow, plus a separate
   file of the construction labels. The construction labels exist to measure how often careful
   reviewers disagree with the generator (a check on the generator and the guidelines). They must
@@ -24,8 +25,17 @@ from opslm.data import dataset_hash, validate_cases, write_cases
 from opslm.datagen import vocab as V
 from opslm.datagen.scenarios import TEMPLATES, Ctx, PairSpec
 from opslm.labeling import CandidatePair, write_candidates
-from opslm.labels import GUIDELINE_VERSION, derive_label, values_agree
-from opslm.schema import EvalCase, FactPair, SourceKind, Split
+from opslm.labels import GUIDELINE_VERSION, derive_label, infer_reasons, values_agree
+from opslm.schema import (
+    CONSTRUCTION_LABELER,
+    EvalCase,
+    GoldLabel,
+    ReasonCode,
+    ReconciliationInput,
+    Relationship,
+    Source,
+    Split,
+)
 
 GENERATOR_VERSION = "1"
 
@@ -43,23 +53,33 @@ class GenerationResult:
     manifest: dict[str, Any] = field(default_factory=dict)
 
 
-def _case(spec: PairSpec, ctx_facts: dict, scenario_id: str, kind: str, j: int,
-          split: Split) -> EvalCase:
-    a, b = ctx_facts[spec.a], ctx_facts[spec.b]
-    label = derive_label(spec.concept, spec.scope, values_agree(a, b))
-    if label is not spec.expect:
+def _case(spec: PairSpec, ctx: Ctx, kind: str, j: int, split: Split) -> EvalCase:
+    a, b = ctx.facts[spec.a], ctx.facts[spec.b]
+    agree = values_agree(a.quantity, b.quantity)
+    label = derive_label(spec.concept, spec.scope, agree)
+    if label != spec.expect:
         raise GeneratorError(
-            f"{scenario_id} ({kind}): template expected {spec.expect.value} but the guideline "
-            f"decision table gives {label.value} for {a.metric!r} vs {b.metric!r} "
-            f"(values {a.value} {a.scale.name} / {b.value} {b.scale.name})"
+            f"{ctx.scenario_id} ({kind}): template expected {spec.expect.value} but the guideline "
+            f"decision table gives {label.value} for {a.metric_label!r} vs {b.metric_label!r} "
+            f"(values {a.quantity.raw_text} / {b.quantity.raw_text})"
         )
-    tags = tuple(dict.fromkeys((kind, *spec.tags)))
+    reasons = list(spec.reasons) or infer_reasons(a, b, spec.concept, spec.scope, agree)
+    if label == Relationship.EQUIVALENT and (a.quantity.value < 0 or b.quantity.value < 0):
+        reasons.append(ReasonCode.SIGN_CONVENTION)
+    case_id = f"{ctx.scenario_id}-p{j}"
+    doc_ids = {s.doc_id for f in (a, b) for s in f.evidence}
     return EvalCase(
-        case_id=f"{scenario_id}-p{j}", scenario_id=scenario_id, pair=FactPair(fact_a=a, fact_b=b),
-        label=label, concept_same=spec.concept, scope_same=spec.scope, rationale=spec.rationale,
-        source_kind=SourceKind.SYNTHETIC, split=split, reviewed=False,
-        guideline_version=GUIDELINE_VERSION, discrepancy_reason=spec.reason,
-        discriminating_fields=spec.fields, tags=tags,
+        input=ReconciliationInput(case_id=case_id, fact_a=a, fact_b=b,
+                                  documents=[ctx.docs[d] for d in sorted(doc_ids)]),
+        gold=GoldLabel(
+            case_id=case_id, relationship=label, concept_same=spec.concept,
+            scope_same=spec.scope, reasons=reasons,
+            # each fact has one span, and every judgment rests on what both facts say
+            required_evidence_refs=[s.span_id for f in (a, b) for s in f.evidence],
+            rationale=spec.rationale, tags=list(dict.fromkeys((kind, *spec.tags))), split=split,
+            source=Source.SYNTHETIC, labeled_by=CONSTRUCTION_LABELER,
+            guideline_version=GUIDELINE_VERSION,
+        ),
     )
 
 
@@ -94,7 +114,7 @@ def generate(
         ctx = Ctx(rng, scenario_id, V.make_company(rng, used), V.make_calendar(rng),
                   heldout=split is not Split.TRAIN)
         kind, specs = TEMPLATES[kind_name][0](ctx)
-        cases = [_case(s, ctx.facts, scenario_id, kind, j, split) for j, s in enumerate(specs, 1)]
+        cases = [_case(s, ctx, kind, j, split) for j, s in enumerate(specs, 1)]
         if split is Split.TRAIN:
             result.train += cases
         elif split is Split.VALIDATION:
@@ -102,14 +122,15 @@ def generate(
         else:
             result.test_construction += cases
             result.test_candidates += [
-                CandidatePair(case_id=c.case_id, scenario_id=c.scenario_id, pair=c.pair,
-                              source_kind=c.source_kind, split=Split.TEST, tags=c.tags)
+                CandidatePair(input=c.input, source=c.gold.source, split=Split.TEST,
+                              tags=tuple(c.gold.tags))
                 for c in cases
             ]
 
-    # leakage check across all splits (test cases are marked reviewed only for this check)
+    # leakage check across all splits (test labels count as human only for this check)
     checked = result.train + result.validation + [
-        c.model_copy(update={"reviewed": True}) for c in result.test_construction]
+        c.model_copy(update={"gold": c.gold.model_copy(update={"labeled_by": "leakage-check"})})
+        for c in result.test_construction]
     problems = validate_cases(checked)
     if problems:
         raise GeneratorError("generated data failed validation: " + "; ".join(problems[:5]))
@@ -121,7 +142,7 @@ def generate(
 def _distribution(cases: list[EvalCase]) -> dict[str, int]:
     out: dict[str, int] = {}
     for c in cases:
-        out[c.label.value] = out.get(c.label.value, 0) + 1
+        out[c.gold.relationship] = out.get(c.gold.relationship, 0) + 1
     return dict(sorted(out.items()))
 
 
@@ -129,7 +150,7 @@ def _manifest(r: GenerationResult, n: int, seed: int, fractions: tuple[float, ..
               weights: dict[str, int]) -> dict[str, Any]:
     kinds: dict[str, int] = {}
     for c in r.train + r.validation + r.test_construction:
-        kinds[c.tags[0]] = kinds.get(c.tags[0], 0) + 1
+        kinds[c.gold.tags[0]] = kinds.get(c.gold.tags[0], 0) + 1
     splits = {"train": r.train, "validation": r.validation, "test": r.test_construction}
     return {
         "generator_version": GENERATOR_VERSION,
@@ -140,7 +161,8 @@ def _manifest(r: GenerationResult, n: int, seed: int, fractions: tuple[float, ..
         "template_weights": weights,
         "pairs_by_kind": dict(sorted(kinds.items())),
         "splits": {
-            name: {"pairs": len(cs), "scenarios": len({c.scenario_id for c in cs}),
+            name: {"pairs": len(cs),
+                   "scenarios": len({f for c in cs for f in c.input.document_families()}),
                    "labels": _distribution(cs), "dataset_hash": dataset_hash(cs)}
             for name, cs in splits.items()
         },

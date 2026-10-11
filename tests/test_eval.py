@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 
 import pytest
 
@@ -8,27 +7,14 @@ from opslm.eval import metrics as m
 from opslm.eval.__main__ import main
 from opslm.eval.harness import compare_runs, evaluate, read_run, write_run
 from opslm.eval.stats import bootstrap_ci, mcnemar_exact
-from opslm.labels import GUIDELINE_VERSION
-from opslm.schema import (
-    BusinessFact,
-    DiscrepancyReason,
-    EvalCase,
-    Evidence,
-    FactPair,
-    Period,
-    PeriodType,
-    Prediction,
-    Relation,
-    SourceKind,
-    SourceRef,
-    Split,
-)
+from opslm.schema import Period, ReconciliationOutput, Relationship
+from tests.factories import case, fact
 
 E, C, R, I = (
-    Relation.EQUIVALENT,
-    Relation.CONFLICTING,
-    Relation.RELATED_BUT_DIFFERENT,
-    Relation.INSUFFICIENT_EVIDENCE,
+    Relationship.EQUIVALENT,
+    Relationship.CONFLICTING,
+    Relationship.RELATED_BUT_DIFFERENT,
+    Relationship.INSUFFICIENT_EVIDENCE,
 )
 
 
@@ -101,71 +87,52 @@ def test_bootstrap_ci_none_for_empty():
     assert bootstrap_ci(m.accuracy, [], [], n=10) is None
 
 
+def test_metrics_accept_plain_strings():
+    assert m.accuracy(["equivalent", "conflicting"], [E, "conflicting"]) == 1.0
+    assert m.confusion_matrix(["equivalent"], ["equivalent"])["equivalent"]["equivalent"] == 1
+
+
 # --- harness -------------------------------------------------------------------
 
-
-def fact(fid, metric="Revenue", value="42.5", period="FY2025", entity="Acme Corp"):
-    return BusinessFact(
-        fact_id=fid,
-        metric=metric,
-        value=Decimal(value),
-        unit="USD",
-        entity=entity,
-        period=Period(label=period, type=PeriodType.FISCAL_YEAR),
-        source=SourceRef(document_id="d"),
-    )
-
-
-def make_case(n, a, b, label, concept, scope, reason=None, fields=(), split=Split.TEST, tags=()):
-    return EvalCase(
-        case_id=f"c{n}",
-        scenario_id=f"s{n}",
-        pair=FactPair(fact_a=a, fact_b=b),
-        label=label,
-        concept_same=concept,
-        scope_same=scope,
-        rationale="r",
-        source_kind=SourceKind.SYNTHETIC,
-        split=split,
-        reviewed=True,
-        guideline_version=GUIDELINE_VERSION,
-        discrepancy_reason=reason,
-        discriminating_fields=fields,
-        tags=tags,
-    )
+Q3 = Period(type="duration", label="Q3 2025", fiscal_year=2025, fiscal_quarter=3)
 
 
 def sample_cases():
     return [
-        make_case(1, fact("a1"), fact("b1", "Total Revenue"), E, True, True, tags=("synonym",)),
-        make_case(2, fact("a2"), fact("b2", "Sales", "44.1"), C, True, True,
-                  DiscrepancyReason.UNEXPLAINED, ("value",)),
-        make_case(3, fact("a3"), fact("b3", "ARR", "39.2"), R, False, True,
-                  DiscrepancyReason.DEFINITION, ("metric",)),
-        make_case(4, fact("a4"), fact("b4", period="Q3 2025"), R, True, False,
-                  DiscrepancyReason.PERIOD, ("period",)),
+        case("c1", fact("a1"), fact("b1", "Total Revenue"), E, family="s1", split="test",
+             tags=["synonym"]),
+        case("c2", fact("a2"), fact("b2", "Sales", "44.1"), C, family="s2", split="test",
+             reasons=("value_mismatch",)),
+        case("c3", fact("a3"), fact("b3", "ARR", "39.2"), R, False, True, family="s3",
+             split="test", reasons=("definition_mismatch",)),
+        case("c4", fact("a4"), fact("b4", period=Q3), R, True, False, family="s4", split="test",
+             reasons=("period_mismatch",)),
     ]
 
 
 def test_rules_baseline_on_sample_cases():
     run = evaluate(RulesBaseline(), sample_cases(), bootstrap_n=50)
-    assert run.n_cases == 4 and run.n_errors == 0
+    assert run.n_cases == 4 and run.n_errors == 0 and run.n_invalid_references == 0
     assert run.metrics["accuracy"].value == 1.0
     assert run.metrics["concept_accuracy"].value == 1.0
     assert run.metrics["false_match_rate"].value == 0.0
     assert run.evidence is not None and run.evidence.recall == 1.0
     assert run.cost.total_usd == 0.0
     assert run.slices["tag"]["synonym"].n == 1
-    assert run.slices["discrepancy_reason"]["period"].accuracy == 1.0
+    assert run.slices["primary_reason"]["period_mismatch"].accuracy == 1.0
+    assert run.slices["source"]["synthetic"].n == 4
 
 
 class Broken:
+    """Errors on c2, otherwise calls everything equivalent and cites one span."""
+
     name = "broken"
 
-    def predict(self, case_id, pair):
-        if case_id == "c2":
+    def predict(self, case):
+        if case.case_id == "c2":
             raise RuntimeError("boom")
-        return Prediction(case_id=case_id, label=E, evidence=(Evidence(fact_id="x", field="metric"),))
+        return ReconciliationOutput(case_id=case.case_id, relationship=E, reasons=["synonym"],
+                                    explanation="x", evidence_refs=[case.fact_a.evidence[0].span_id])
 
 
 def test_predictor_errors_are_recorded_not_raised():
@@ -175,6 +142,21 @@ def test_predictor_errors_are_recorded_not_raised():
     assert bad.prediction is None and "boom" in bad.error and not bad.correct
     assert run.confusion["conflicting"]["none"] == 1
     assert run.metrics["false_match_rate"].value == pytest.approx(2 / 3)
+    assert run.evidence.recall == 0.5 and run.evidence.precision == 1.0
+
+
+class Fabricating(Broken):
+    name = "fabricating"
+
+    def predict(self, case):
+        out = super().predict(case)
+        return out.model_copy(update={"evidence_refs": ["made-up"]})
+
+
+def test_references_to_spans_not_in_the_input_are_counted():
+    run = evaluate(Fabricating(), sample_cases(), bootstrap_n=0)
+    assert run.n_invalid_references == 3
+    assert run.records[0].reference_problems == ["evidence_refs not in input: ['made-up']"]
 
 
 def test_run_roundtrips_through_json(tmp_path):
@@ -218,4 +200,6 @@ def test_example_dataset_loads_and_is_valid():
     from opslm.data import load_dataset
 
     cases = load_dataset("data/examples/guideline_examples.jsonl")
-    assert len(cases) == 9 and not any(c.reviewed for c in cases)
+    assert len(cases) == 9 and all(c.gold.labeled_by == "guideline-examples" for c in cases)
+    run = evaluate(RulesBaseline(), cases, bootstrap_n=0)
+    assert run.metrics["accuracy"].value == 1.0  # written alongside the rules; see the README

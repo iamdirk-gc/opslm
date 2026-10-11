@@ -28,8 +28,8 @@ from opslm.baselines.prompts import (
     PROMPT_VERSION,
     SYSTEM_PROMPT,
 )
-from opslm.labels import derive_label, values_agree
-from opslm.schema import BusinessFact, Evidence, FactPair, Prediction
+from opslm.labels import derive_label, infer_reasons, values_agree
+from opslm.schema import BusinessFact, ModelRunInfo, ReconciliationInput, ReconciliationOutput
 
 # Optional USD per million tokens (input, output) for hosted models. Prices change and differ
 # by platform, so these are a dated snapshot of Anthropic first-party list prices only; pass
@@ -55,43 +55,40 @@ class Judgment(BaseModel):
     rationale: str
     concept_same: Verdict
     scope_same: Verdict
-    deciding_fields: list[Literal["metric", "qualifiers", "definition", "entity", "period"]]
+    deciding_fields: list[Literal["metric", "basis", "definition", "entity", "period"]]
 
 
 def _tri(v: Verdict) -> bool | None:
     return {"yes": True, "no": False}.get(v)
 
 
-def fact_view(fact: BusinessFact, *, show_values: bool) -> dict[str, Any]:
-    """What the model sees of a fact. Identifiers and locations are omitted."""
-    view: dict[str, Any] = {"metric": fact.metric}
+def fact_view(fact: BusinessFact, doc_types: dict[str, str], *, show_values: bool) -> dict[str, Any]:
+    """What the model sees of a fact. Identifiers, locations and extraction details are omitted."""
+    view: dict[str, Any] = {"metric": fact.metric_label, "metric_id": fact.metric_id}
     if show_values:
-        view.update(value=str(fact.value) if fact.value is not None else None,
-                    unit=fact.unit, scale=fact.scale.name.lower())
-    view["entity"] = fact.entity
-    if fact.period:
-        view["period"] = {
-            "label": fact.period.label,
-            "type": fact.period.type.value,
-            "start": fact.period.start.isoformat() if fact.period.start else None,
-            "end": fact.period.end.isoformat() if fact.period.end else None,
-        }
-    else:
-        view["period"] = None
-    view["definition"] = fact.definition
-    view["qualifiers"] = list(fact.qualifiers)
-    view["source"] = {"document_type": fact.source.document_type, "excerpt": fact.source.excerpt}
+        q = fact.quantity
+        view["value"] = {"value": str(q.value), "unit": q.unit, "currency": q.currency,
+                         "reported_scale": str(q.reported_scale), "as_printed": q.raw_text}
+    view["entity"] = fact.entity.model_dump(mode="json") if fact.entity else None
+    view["period"] = (fact.period.model_dump(mode="json", exclude_defaults=True)
+                      if fact.period else None)
+    view["definition"] = fact.stated_definition
+    view["basis"] = {"accounting": fact.accounting_basis, "reporting": fact.reporting_status}
+    view["evidence"] = [{"document_type": doc_types.get(s.doc_id), "text": s.text}
+                        for s in fact.evidence]
     return view
 
 
-def build_user_message(pair: FactPair, *, show_values: bool) -> str:
-    return json.dumps(
-        {
-            "fact_a": fact_view(pair.fact_a, show_values=show_values),
-            "fact_b": fact_view(pair.fact_b, show_values=show_values),
-        },
-        indent=2,
-    )
+def build_user_message(case: ReconciliationInput, *, show_values: bool) -> str:
+    doc_types = {d.doc_id: d.doc_type for d in case.documents}
+    view = {
+        "fact_a": fact_view(case.fact_a, doc_types, show_values=show_values),
+        "fact_b": fact_view(case.fact_b, doc_types, show_values=show_values),
+    }
+    if case.context:
+        view["context"] = [{"document_type": doc_types.get(s.doc_id), "text": s.text}
+                           for s in case.context]
+    return json.dumps(view, indent=2)
 
 
 @dataclass
@@ -143,10 +140,10 @@ class LLMPredictor:
             return None
         return (input_tokens * self.prices[0] + output_tokens * self.prices[1]) / 1_000_000
 
-    def _call(self, pair: FactPair) -> tuple[Judgment, float | None]:
+    def _call(self, case: ReconciliationInput) -> tuple[Judgment, float | None, int, int]:
         c = self.backend.complete(
             SYSTEM_PROMPT,
-            build_user_message(pair, show_values=self.show_values),
+            build_user_message(case, show_values=self.show_values),
             JUDGMENT_SCHEMA,
             max_tokens=self.max_tokens,
         )
@@ -167,48 +164,45 @@ class LLMPredictor:
         if not c.text:
             raise LLMError("response contained no text")
         try:
-            return Judgment.model_validate_json(c.text), cost
+            return Judgment.model_validate_json(c.text), cost, c.input_tokens, c.output_tokens
         except ValueError as e:
             raise LLMError(f"unparseable model output: {e}") from e
 
-    def predict(self, case_id: str, pair: FactPair) -> Prediction:
+    def predict(self, case: ReconciliationInput) -> ReconciliationOutput:
         start = time.perf_counter()
         try:
-            judgment, cost = self._call(pair)
+            judgment, cost, in_tokens, out_tokens = self._call(case)
         except LLMError:
             self.usage.failed_calls += 1
             raise
         latency = time.perf_counter() - start
 
-        a, b = pair.fact_a, pair.fact_b
+        a, b = case.fact_a, case.fact_b
         concept, scope = _tri(judgment.concept_same), _tri(judgment.scope_same)
-        agree = values_agree(a, b)
-        label = derive_label(concept, scope, agree)
-
-        if concept is not True or scope is not True:
-            fields = list(dict.fromkeys(judgment.deciding_fields))
-        elif agree is False:
-            fields = ["value", "scale"]
-        elif agree is None:
-            fields = ["value", "unit"]
-        else:
-            fields = []
-        evidence = tuple(Evidence(fact_id=f.fact_id, field=n) for n in fields for f in (a, b))
-        return Prediction(
-            case_id=case_id,
-            label=label,
+        agree = values_agree(a.quantity, b.quantity)
+        culprits = list(dict.fromkeys(judgment.deciding_fields))
+        return ReconciliationOutput(
+            case_id=case.case_id,
+            relationship=derive_label(concept, scope, agree),
+            reasons=infer_reasons(a, b, concept, scope, agree, culprits),
+            explanation=_clip(judgment.rationale or "No rationale given."),
+            # the model sees each fact's evidence but does not pick spans; cite them all
+            evidence_refs=[s.span_id for f in (a, b) for s in f.evidence],
             concept_same=concept,
             scope_same=scope,
             values_agree=agree,
-            evidence=evidence,
-            rationale=judgment.rationale,
-            latency_s=latency,
-            cost_usd=cost,
+            run=ModelRunInfo(system="llm", model_name=self.backend.model,
+                             latency_ms=latency * 1000, input_tokens=in_tokens,
+                             output_tokens=out_tokens, cost_usd=cost),
         )
 
 
+def _clip(text: str, limit: int = 1000) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
 def estimate_cost(
-    pairs: list[FactPair], prices: tuple[float, float] | None, *, show_values: bool = False
+    pairs: list[ReconciliationInput], prices: tuple[float, float] | None, *, show_values: bool = False
 ) -> dict[str, Any]:
     """Rough spend estimate before any call. Token counts are approximations.
 

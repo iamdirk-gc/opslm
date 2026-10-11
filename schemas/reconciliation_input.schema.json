@@ -1,0 +1,600 @@
+{
+  "$defs": {
+    "AccountingBasis": {
+      "description": "Which accounting rules produced the number.",
+      "enum": [
+        "gaap",
+        "ifrs",
+        "non_gaap",
+        "unknown"
+      ],
+      "title": "AccountingBasis",
+      "type": "string"
+    },
+    "BusinessFact": {
+      "additionalProperties": false,
+      "description": "One value a document claims.\n\n``entity`` and ``period`` may be None when the source does not state them; such facts\ncan still be compared, but scope cannot be established (insufficient evidence).",
+      "properties": {
+        "accounting_basis": {
+          "$ref": "#/$defs/AccountingBasis",
+          "default": "unknown"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Entity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None means not stated in the source."
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceSpan"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "extraction": {
+          "$ref": "#/$defs/ExtractionInfo"
+        },
+        "fact_id": {
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/MetricId",
+          "description": "Canonical mapping; OTHER if none applies."
+        },
+        "metric_label": {
+          "description": "Label as written: 'Net sales', 'Adj. EBITDA'.",
+          "title": "Metric Label",
+          "type": "string"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Period"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None means not stated in the source."
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "reporting_status": {
+          "$ref": "#/$defs/ReportingStatus",
+          "default": "unknown"
+        },
+        "stated_definition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Definition text if the document gives one. None means not stated.",
+          "title": "Stated Definition"
+        }
+      },
+      "required": [
+        "fact_id",
+        "metric_label",
+        "metric_id",
+        "quantity",
+        "evidence",
+        "extraction"
+      ],
+      "title": "BusinessFact",
+      "type": "object"
+    },
+    "Entity": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/EntityScope",
+          "default": "consolidated"
+        },
+        "segment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segment"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
+    "EntityScope": {
+      "enum": [
+        "consolidated",
+        "attributable_to_parent",
+        "segment",
+        "subsidiary",
+        "pro_forma",
+        "unknown"
+      ],
+      "title": "EntityScope",
+      "type": "string"
+    },
+    "EvidenceSpan": {
+      "additionalProperties": false,
+      "description": "An exact location in a source document. Every fact and every\nreconciliation decision must point at one or more of these.",
+      "properties": {
+        "cell_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'R12C4' or 'B17' for workbooks.",
+          "title": "Cell Ref"
+        },
+        "char_end": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char End"
+        },
+        "char_start": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char Start"
+        },
+        "doc_id": {
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "span_id": {
+          "title": "Span Id",
+          "type": "string"
+        },
+        "table_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Table Id"
+        },
+        "text": {
+          "description": "Verbatim text of the span as extracted.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "span_id",
+        "doc_id",
+        "text"
+      ],
+      "title": "EvidenceSpan",
+      "type": "object"
+    },
+    "ExtractionInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "extractor": {
+          "description": "'docling', 'azure_di', 'manual', 'synthetic', ...",
+          "title": "Extractor",
+          "type": "string"
+        },
+        "extractor_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extractor Version"
+        }
+      },
+      "required": [
+        "extractor"
+      ],
+      "title": "ExtractionInfo",
+      "type": "object"
+    },
+    "MetricId": {
+      "description": "Canonical metric IDs, matching the v1 metric set on the wiki.\n\nCore: revenue, gross_margin, adjusted_ebitda, net_income.\nOptional: arr (subscription businesses only; not expected for every company).\nFree cash flow and cash are out of scope for v1. Facts for them, or for any\nother metric, map to OTHER.",
+      "enum": [
+        "revenue",
+        "gross_margin",
+        "adjusted_ebitda",
+        "net_income",
+        "arr",
+        "other"
+      ],
+      "title": "MetricId",
+      "type": "string"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "description": "A reporting period.\n\nExpected behavior when dates are missing (common in decks):\n- Unknown dates are allowed. A DURATION may omit start/end and an INSTANT\n  may omit as_of; None means \"not stated in the source\", not invalid.\n- The minimum valid period is the source label. fiscal_year plus label\n  (\"FY2025\") is enough to compare against another period that states the\n  same fiscal year. It is NOT enough to match a calendar-dated period\n  (\"year ended Dec 31, 2025\") unless the fiscal year end is known.\n- Invalid records are ones that contradict themselves: an INSTANT with\n  start/end, a DURATION with as_of, or start after end.",
+      "properties": {
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        },
+        "fiscal_quarter": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Quarter"
+        },
+        "fiscal_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Year"
+        },
+        "is_ltm": {
+          "default": false,
+          "title": "Is Ltm",
+          "type": "boolean"
+        },
+        "label": {
+          "description": "As written in the source, e.g. 'FY2025', 'Q3 FY25'.",
+          "title": "Label",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "type": {
+          "$ref": "#/$defs/PeriodType"
+        }
+      },
+      "required": [
+        "type",
+        "label"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "PeriodType": {
+      "enum": [
+        "duration",
+        "instant"
+      ],
+      "title": "PeriodType",
+      "type": "string"
+    },
+    "Quantity": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO 4217, required for CURRENCY.",
+          "title": "Currency"
+        },
+        "raw_text": {
+          "description": "Value exactly as printed, e.g. '(5.2)' or '$42.5M'.",
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "reported_scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "1",
+          "description": "Scale as shown in the source: 1e6 for '$ in millions'.",
+          "title": "Reported Scale"
+        },
+        "unit": {
+          "$ref": "#/$defs/UnitType"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Normalized to base units: 42500000, not 42.5.",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "raw_text"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "ReportingStatus": {
+      "description": "Assurance level of the source, independent of accounting basis.\nManagement can report unaudited GAAP revenue: gaap + unaudited.",
+      "enum": [
+        "audited",
+        "unaudited",
+        "unknown"
+      ],
+      "title": "ReportingStatus",
+      "type": "string"
+    },
+    "SourceDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "company": {
+          "title": "Company",
+          "type": "string"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the exact file parsed.",
+          "title": "Content Sha256"
+        },
+        "doc_id": {
+          "description": "Stable ID, e.g. 'acme-10k-fy2025'.",
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "doc_type": {
+          "description": "10-K, 10-Q, earnings_deck, investor_presentation, workbook, ...",
+          "title": "Doc Type",
+          "type": "string"
+        },
+        "document_family": {
+          "description": "Groups related docs for the train/eval split, e.g. 'acme-fy2025'.",
+          "title": "Document Family",
+          "type": "string"
+        },
+        "license_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Redistribution terms or restriction (task 2.4).",
+          "title": "License Note"
+        },
+        "retrieved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrieved At"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "doc_id",
+        "company",
+        "document_family",
+        "doc_type"
+      ],
+      "title": "SourceDocument",
+      "type": "object"
+    },
+    "UnitType": {
+      "enum": [
+        "currency",
+        "percent",
+        "ratio",
+        "count"
+      ],
+      "title": "UnitType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One eval/training case. The model sees only this.",
+  "properties": {
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "context": {
+      "description": "Optional extra spans, e.g. a definition footnote or reconciliation table.",
+      "items": {
+        "$ref": "#/$defs/EvidenceSpan"
+      },
+      "title": "Context",
+      "type": "array"
+    },
+    "documents": {
+      "description": "Metadata for every doc_id referenced by the facts.",
+      "items": {
+        "$ref": "#/$defs/SourceDocument"
+      },
+      "title": "Documents",
+      "type": "array"
+    },
+    "fact_a": {
+      "$ref": "#/$defs/BusinessFact"
+    },
+    "fact_b": {
+      "$ref": "#/$defs/BusinessFact"
+    },
+    "schema_version": {
+      "default": "0.2.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "case_id",
+    "fact_a",
+    "fact_b",
+    "documents"
+  ],
+  "title": "ReconciliationInput",
+  "type": "object"
+}

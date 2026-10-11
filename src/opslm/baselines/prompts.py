@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import hashlib
 
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 SYSTEM_PROMPT = """\
 You reconcile two business facts extracted from documents. Using only the fields shown, \
-make two judgments. Numeric values are deliberately not shown (unless they appear in a \
-source excerpt); do not guess at them. Your answer is combined with a separate numeric \
+make two judgments. Numeric values are deliberately not shown (unless they appear in the \
+evidence text); do not guess at them. Your answer is combined with a separate numeric \
 comparison, so do not try to decide whether the numbers match.
 
 1. concept_same: would a careful analyst substitute one metric for the other in a model \
-without changing its meaning, given the definitions and qualifiers shown?
+without changing its meaning, given the definitions and accounting basis shown?
    - "yes": the same concept. Standard naming variants are the same concept (revenue / \
 total revenue / net sales / sales / turnover; net income / net earnings / net income (loss); \
-gross margin / GM) unless a qualifier or definition on \
+gross margin / GM) unless a qualifier, basis or definition on \
 either fact signals a difference.
    - "no": different concepts. Qualifiers or definitions that change meaning: GAAP vs \
 adjusted or non-GAAP, gross vs net where stated, recognized revenue vs run-rate or \
@@ -35,8 +35,8 @@ state definitions that differ, "cannot_tell" if a definition is missing on eithe
 year, fiscal year vs calendar year with different end dates.
    - For point-in-time metrics (ARR) the period is an as-of date: different as-of \
 dates are "no".
-   - "cannot_tell" if the entity or period is missing on either fact and the excerpts do \
-not state it.
+   - "cannot_tell" if the entity or period is missing on either fact and the evidence \
+text does not state it.
    - Formatting differences ("FY2025" vs "Fiscal Year 2025") are the same period.
 
 Rules:
@@ -44,7 +44,7 @@ Rules:
 - Do not invent explanations. Answer "cannot_tell" only when a judgment truly cannot be \
 made from the fields shown, not to avoid a hard but answerable case.
 - deciding_fields lists the fact fields that determine any judgment that is not "yes" \
-(choose from metric, qualifiers, definition, entity, period). Use an empty list when both \
+(choose from metric, basis, definition, entity, period). Use an empty list when both \
 judgments are "yes".
 - Put a one or two sentence rationale first.
 
@@ -72,7 +72,7 @@ JUDGMENT_SCHEMA: dict = {
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["metric", "qualifiers", "definition", "entity", "period"],
+                "enum": ["metric", "basis", "definition", "entity", "period"],
             },
         },
     },

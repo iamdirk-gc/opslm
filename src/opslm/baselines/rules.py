@@ -11,8 +11,16 @@ from __future__ import annotations
 import re
 import time
 
-from opslm.labels import derive_label, values_agree
-from opslm.schema import BusinessFact, Evidence, FactPair, Period, Prediction
+from opslm.labels import derive_label, infer_reasons, values_agree
+from opslm.schema import (
+    AccountingBasis,
+    BusinessFact,
+    ModelRunInfo,
+    Period,
+    PeriodType,
+    ReconciliationInput,
+    ReconciliationOutput,
+)
 
 # canonical concept -> names it is reported under
 DEFAULT_SYNONYMS: dict[str, tuple[str, ...]] = {
@@ -50,6 +58,8 @@ _MARKERS = {
 }
 # Markers that do not change meaning: the default reporting basis.
 _NEUTRAL = {"gaap", "reported", "audited", "unaudited"}
+# Marker implied by a non-GAAP accounting basis, so "EBITDA" (non-GAAP) reads as adjusted.
+_BASIS_MARKER = "adjusted"
 _PHRASES = {
     "non gaap": "adjusted",
     "pro forma": "proforma",
@@ -91,13 +101,11 @@ class RulesBaseline:
 
     def _parse_metric(self, fact: BusinessFact) -> tuple[str, frozenset[str]]:
         """Return (core metric, markers). The core is a canonical concept name when known."""
-        text = normalize_text(fact.metric)
-        qualifiers = " ".join(normalize_text(q) for q in fact.qualifiers)
+        text = normalize_text(fact.metric_label)
         for phrase, repl in _PHRASES.items():
             text = text.replace(phrase, repl)
-            qualifiers = qualifiers.replace(phrase, repl)
         tokens = [t for t in text.split() if t not in _NEUTRAL]
-        markers = {t for t in qualifiers.split() if t in _MARKERS}
+        markers = {_BASIS_MARKER} if fact.accounting_basis == AccountingBasis.NON_GAAP else set()
         full = " ".join(tokens)
         if full in self._canonical:  # e.g. "gross profit", "net revenue" are concepts themselves
             return self._canonical[full], frozenset(markers)
@@ -105,31 +113,41 @@ class RulesBaseline:
         core = " ".join(t for t in tokens if t not in _MARKERS)
         return self._canonical.get(core, core), frozenset(markers)
 
-    def _concept_same(self, a: BusinessFact, b: BusinessFact) -> bool | None:
+    def _concept_same(self, a: BusinessFact, b: BusinessFact) -> tuple[bool | None, list[str]]:
+        """Return (verdict, fields responsible for anything other than a clean yes)."""
         core_a, markers_a = self._parse_metric(a)
         core_b, markers_b = self._parse_metric(b)
         known = set(self._canonical.values())
         if core_a != core_b:
             # both recognised and different -> different concepts; otherwise we can't tell
-            return False if core_a in known and core_b in known else None
-        return markers_a == markers_b
+            return (False if core_a in known and core_b in known else None), ["metric"]
+        if markers_a == markers_b:
+            return True, []
+        basis_only = (markers_a ^ markers_b) == {_BASIS_MARKER} and a.accounting_basis != b.accounting_basis
+        return False, ["basis"] if basis_only else ["metric"]
 
     # --- scope -------------------------------------------------------------------
 
     @staticmethod
     def _entity_same(a: BusinessFact, b: BusinessFact) -> bool | None:
-        if not a.entity or not b.entity:
+        if a.entity is None or b.entity is None:
             return None
-        return normalize_entity(a.entity) == normalize_entity(b.entity)
+        ea, eb = a.entity, b.entity
+        return (normalize_entity(ea.name) == normalize_entity(eb.name) and ea.scope == eb.scope
+                and normalize_text(ea.segment or "") == normalize_text(eb.segment or ""))
 
     @staticmethod
     def _period_same(a: Period | None, b: Period | None) -> bool | None:
         if a is None or b is None:
             return None
-        if a.start and a.end and b.start and b.end:
-            return (a.start, a.end) == (b.start, b.end)
-        if a.type != b.type and "other" not in (a.type.value, b.type.value):
+        if a.type != b.type:
             return False
+        if a.type == PeriodType.INSTANT and a.as_of and b.as_of:
+            return a.as_of == b.as_of
+        if a.type == PeriodType.DURATION and a.dates_known and b.dates_known:
+            return (a.start, a.end) == (b.start, b.end)
+        if a.fiscal_year is not None and b.fiscal_year is not None:
+            return (a.fiscal_year, a.fiscal_quarter, a.is_ltm) == (b.fiscal_year, b.fiscal_quarter, b.is_ltm)
         return normalize_period_label(a.label) == normalize_period_label(b.label)
 
     def _scope_same(self, a: BusinessFact, b: BusinessFact) -> tuple[bool | None, list[str]]:
@@ -143,32 +161,35 @@ class RulesBaseline:
 
     # --- prediction --------------------------------------------------------------
 
-    def predict(self, case_id: str, pair: FactPair) -> Prediction:
+    def predict(self, case: ReconciliationInput) -> ReconciliationOutput:
         start = time.perf_counter()
-        a, b = pair.fact_a, pair.fact_b
-        concept = self._concept_same(a, b)
+        a, b = case.fact_a, case.fact_b
+        concept, concept_fields = self._concept_same(a, b)
         scope, scope_fields = self._scope_same(a, b)
-        agree = values_agree(a, b)
+        agree = values_agree(a.quantity, b.quantity)
         label = derive_label(concept, scope, agree)
-
-        if concept is not True:
-            fields = ["metric", "qualifiers"]
-        elif scope is not True:
-            fields = scope_fields
-        elif agree is not True:
-            fields = ["value", "scale"] if agree is False else ["value", "unit"]
-        else:
-            fields = []
-        evidence = tuple(
-            Evidence(fact_id=f.fact_id, field=name) for name in fields for f in (a, b)
-        )
-        return Prediction(
-            case_id=case_id,
-            label=label,
+        culprits = concept_fields if concept is not True else scope_fields
+        return ReconciliationOutput(
+            case_id=case.case_id,
+            relationship=label,
+            reasons=infer_reasons(a, b, concept, scope, agree, culprits),
+            explanation=explain(concept, scope, agree, culprits),
+            evidence_refs=[s.span_id for f in (a, b) for s in f.evidence],
             concept_same=concept,
             scope_same=scope,
             values_agree=agree,
-            evidence=evidence,
-            latency_s=time.perf_counter() - start,
-            cost_usd=0.0,
+            run=ModelRunInfo(system=self.name, latency_ms=(time.perf_counter() - start) * 1000,
+                             cost_usd=0.0),
         )
+
+
+def _verdict(v: bool | None) -> str:
+    return "cannot tell" if v is None else "yes" if v else "no"
+
+
+def explain(concept: bool | None, scope: bool | None, agree: bool | None,
+            culprits: list[str]) -> str:
+    """A one-line account of the judgments behind a label."""
+    text = (f"Same concept: {_verdict(concept)}; same scope: {_verdict(scope)}; "
+            f"values agree: {'not comparable' if agree is None else _verdict(agree)}.")
+    return text + (f" Decided by: {', '.join(culprits)}." if culprits else "")

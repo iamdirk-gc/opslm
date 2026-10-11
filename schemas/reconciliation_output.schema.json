@@ -1,0 +1,334 @@
+{
+  "$defs": {
+    "ModelRunInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "system": {
+          "description": "'rules', 'frontier_llm', 'open_weight_base', 'open_weight_ft'.",
+          "title": "System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "system"
+      ],
+      "title": "ModelRunInfo",
+      "type": "object"
+    },
+    "Quantity": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO 4217, required for CURRENCY.",
+          "title": "Currency"
+        },
+        "raw_text": {
+          "description": "Value exactly as printed, e.g. '(5.2)' or '$42.5M'.",
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "reported_scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "1",
+          "description": "Scale as shown in the source: 1e6 for '$ in millions'.",
+          "title": "Reported Scale"
+        },
+        "unit": {
+          "$ref": "#/$defs/UnitType"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Normalized to base units: 42500000, not 42.5.",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "raw_text"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "ReasonCode": {
+      "description": "Why the facts match or differ. Also used as difficulty slices in eval.",
+      "enum": [
+        "exact_match",
+        "synonym",
+        "rounding",
+        "unit_scale",
+        "sign_convention",
+        "percent_vs_amount",
+        "currency_mismatch",
+        "period_mismatch",
+        "as_of_mismatch",
+        "entity_mismatch",
+        "definition_mismatch",
+        "basis_mismatch",
+        "restatement",
+        "value_mismatch",
+        "missing_definition",
+        "missing_period",
+        "missing_entity",
+        "unsupported_claim"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "Relationship": {
+      "description": "The core classification label.",
+      "enum": [
+        "equivalent",
+        "related_but_different",
+        "conflicting",
+        "insufficient_evidence"
+      ],
+      "title": "Relationship",
+      "type": "string"
+    },
+    "ResolutionStatus": {
+      "description": "What the system does with the pair.",
+      "enum": [
+        "resolved",
+        "resolved_with_conflict",
+        "not_applicable",
+        "needs_review",
+        "abstained"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    },
+    "UnitType": {
+      "enum": [
+        "currency",
+        "percent",
+        "ratio",
+        "count"
+      ],
+      "title": "UnitType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What every system (rules, LLM, open-weight) must return.\n\nRequired: relationship, reasons, explanation, and evidence_refs (unless the\nrelationship is insufficient_evidence). Resolution fields are optional;\nleave resolution_status as None for a classification-only system.\n\nSystems that follow the guidelines' decision table also report the judgments\nbehind the relationship (concept_same, scope_same, values_agree), which the\nharness scores separately. None means \"cannot tell\" or \"not reported\".",
+  "properties": {
+    "canonical_value": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Quantity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The value the system settles on, if any."
+    },
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "concept_same": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Judgment 1: same business concept?",
+      "title": "Concept Same"
+    },
+    "conflicting_fact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Conflicting Fact Ids",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "description": "span_ids from the input that support the decision.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "explanation": {
+      "description": "One or two sentences, human readable.",
+      "maxLength": 1000,
+      "title": "Explanation",
+      "type": "string"
+    },
+    "reasons": {
+      "items": {
+        "$ref": "#/$defs/ReasonCode"
+      },
+      "minItems": 1,
+      "title": "Reasons",
+      "type": "array"
+    },
+    "relationship": {
+      "$ref": "#/$defs/Relationship"
+    },
+    "resolution_status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResolutionStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "run": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelRunInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "default": "0.2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope_same": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Judgment 2: same entity and period?",
+      "title": "Scope Same"
+    },
+    "selected_fact_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Which input fact the canonical value comes from.",
+      "title": "Selected Fact Id"
+    },
+    "values_agree": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Normalized values agree? None = not comparable.",
+      "title": "Values Agree"
+    }
+  },
+  "required": [
+    "case_id",
+    "relationship",
+    "reasons",
+    "explanation"
+  ],
+  "title": "ReconciliationOutput",
+  "type": "object"
+}

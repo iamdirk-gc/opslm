@@ -1,6 +1,7 @@
 """Worked examples and checks for the v0.2.0 schema."""
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -272,8 +273,11 @@ def _recorded_pydantic_version() -> str:
 @pytest.mark.parametrize("name", list(MODELS))
 def test_checked_in_json_schemas_are_current(name):
     if pydantic.VERSION != _recorded_pydantic_version():
-        pytest.skip(f"schemas were generated with pydantic {_recorded_pydantic_version()}; "
-                    f"installed {pydantic.VERSION}. CI's 'schemas' job checks them at the recorded version.")
+        msg = (f"schemas were generated with pydantic {_recorded_pydantic_version()}; installed "
+               f"{pydantic.VERSION}. CI's 'schemas' job checks them at the recorded version.")
+        if os.environ.get("OPSLM_REQUIRE_SCHEMA_CHECK"):
+            pytest.fail(msg)  # that job must really run the comparison, never skip it
+        pytest.skip(msg)
     path = Path("schemas") / f"{name}.schema.json"
     assert path.read_text() == render(json_schemas()[name]), (
         f"{path} is stale; run: python -m opslm.export_schemas")

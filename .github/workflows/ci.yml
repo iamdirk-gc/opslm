@@ -41,6 +41,24 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: pytest -q
 
+  # pydantic's JSON Schema output can change between releases, so the checked-in schemas are
+  # compared at the pydantic version recorded in schemas/pydantic_version.txt (the test jobs
+  # above skip that comparison for any other version).
+  schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pip install "pydantic==$(cat schemas/pydantic_version.txt)"
+      - run: pytest -q tests/test_schema.py -k "json_schemas"
+        env:
+          OPSLM_REQUIRE_SCHEMA_CHECK: "1"
+
   # Mirrors what a new user does from a fresh clone: install, run the evaluator, generate data.
   smoke:
     runs-on: ubuntu-latest

@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"label:   agreement {ag.label_agreement:.0%}, kappa {fmt(ag.label_kappa)}")
         print(f"concept: agreement {ag.concept_agreement:.0%}, kappa {fmt(ag.concept_kappa)}")
         print(f"scope:   agreement {ag.scope_agreement:.0%}, kappa {fmt(ag.scope_kappa)}")
-        print(f"{len(ag.disagreements)} disagreement(s), {len(ag.flagged)} flagged")
+        print(f"{len(ag.disagreements)} disagreement(s), {len(ag.details_differ)} differing in reason or "
+              f"evidence only, {len(ag.flagged)} flagged")
         L.export_disagreement_sheet(args.out, a, b, candidates, ag)
         print(f"adjudication sheet written to {args.out}")
         return 0

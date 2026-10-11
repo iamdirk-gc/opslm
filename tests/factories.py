@@ -50,10 +50,11 @@ def fact(fid: str = "f1", metric: str = "Revenue", value: str = "42.5", *,
 
 
 def case_input(a: BusinessFact, b: BusinessFact, case_id: str = "c1", *,
-               family: str | None = None) -> ReconciliationInput:
+               family: str | None = None, company: str | None = None) -> ReconciliationInput:
+    """By default each document family is its own company, so cases do not leak across splits."""
     doc_ids = sorted({s.doc_id for f in (a, b) for s in f.evidence})
-    docs = [SourceDocument(doc_id=d, company="Acme", document_family=family or case_id,
-                           doc_type="10-K") for d in doc_ids]
+    docs = [SourceDocument(doc_id=d, company=company or f"Company {family or case_id}",
+                           document_family=family or case_id, doc_type="10-K") for d in doc_ids]
     return ReconciliationInput(case_id=case_id, fact_a=a, fact_b=b, documents=docs)
 
 

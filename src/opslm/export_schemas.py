@@ -3,6 +3,11 @@
 The checked-in copies under ``schemas/`` are what other tools use: an LLM API's structured-output
 mode (``reconciliation_output``), extraction pipelines that produce inputs, and labeling tools.
 A test fails when they drift from ``opslm.schema``, so rerun this after any schema change.
+
+pydantic's JSON Schema output can change between releases, so the version used is recorded in
+``schemas/pydantic_version.txt``. The drift test only runs against that exact version (CI has a
+job that installs it), and is skipped for any other, so a pydantic upgrade cannot break the
+build on its own.
 """
 
 from __future__ import annotations
@@ -11,6 +16,8 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
+
+import pydantic
 
 from opslm.schema import EvalCase, GoldLabel, ReconciliationInput, ReconciliationOutput
 
@@ -38,6 +45,9 @@ def write_schemas(out_dir: str | Path) -> list[Path]:
         path = out / f"{name}.schema.json"
         path.write_text(render(schema), encoding="utf-8")
         paths.append(path)
+    version = out / "pydantic_version.txt"
+    version.write_text(pydantic.VERSION + "\n", encoding="utf-8")
+    paths.append(version)
     return paths
 
 

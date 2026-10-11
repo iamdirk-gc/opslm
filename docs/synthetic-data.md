@@ -49,8 +49,10 @@ not be merged) alongside different-value cases.
 - **Held-out vocabulary.** Some naming variants (for example "Turnover", "GM", "EBITDA
   (adjusted)") appear only in validation and test scenarios, so those splits measure
   generalization to unseen surface forms.
-- **Not circular.** The vocabulary is independent of the rules baseline. A test fails if the
-  baseline scores above 80% on the training data (it scores roughly two thirds).
+- **Not solvable by lookup.** The rules baseline knows every naming variant on the metric page (a
+  test requires it), so it scores about 85% on generated data. The cases that need a definition
+  read must stay out of its reach: a test fails if it scores above 95% overall or above 50% on
+  the `definition_resolves` cases (it scores near 0%).
 - **Deterministic** for a given seed and generator version; the manifest records both, plus
   label counts and dataset hashes.
 
@@ -75,8 +77,9 @@ at scale.
 - Language is templated. Excerpts are short and uniform, and definitions are canned. Models can
   learn the templates. An LLM paraphrasing step would add realism but is not built, and it would
   need its own validation that labels survive rewording.
-- Seven metrics and fifteen templates. No multi-hop reconciliation, tables, footnotes or
-  documents, and no sign-convention variants beyond signed values.
+- Five metrics and eighteen templates. No multi-hop reconciliation, tables, footnotes or
+  documents. Reason codes `unsupported_claim`, `unit_scale` and `rounding` are never the primary
+  reason in generated data (the last two only appear as secondary reasons).
 - Company names are invented and could coincide with real companies.
 - Synthetic labels encode the guideline authors' reading. They are only as good as the guidelines,
   which is why a human review of test candidates is part of the process.

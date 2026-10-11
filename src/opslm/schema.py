@@ -11,8 +11,8 @@ evaluated independently:
 
 An ``EvalCase`` (one line of a dataset file) is an input with its gold label.
 
-v1 scope: pairwise comparison of two facts for the metrics on the
-"Metric Definitions" tab. Clustering of 3+ facts is built on top of pairs later.
+v1 scope: pairwise comparison of two facts for the metrics in
+docs/metric-set-v1.md (mirrored on the project wiki). Clustering of 3+ facts is built on top of pairs later.
 
 Primary benchmark task: classify the relationship between two facts.
 Canonical resolution (picking a value) is optional and scored separately; a

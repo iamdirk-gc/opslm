@@ -2,7 +2,7 @@
 """Vocabulary for the synthetic generator, based on the v1 metric set on the project board.
 
 The metric definitions, naming variants, "related but different" lists and reconciliation traps
-come from the project owner's "Metric Definitions" sheet (task 1.1). Where the generator
+come from docs/metric-set-v1.md, the project owner's metric set (task 1.1). Where the generator
 encodes a rule it follows that sheet:
 
 - Naming variants are equivalent when definition, entity and period match.

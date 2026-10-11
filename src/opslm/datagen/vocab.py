@@ -16,6 +16,11 @@ encodes a rule it follows that sheet:
 This vocabulary is independent of the rules baseline's synonym table. Names marked ``heldout``
 appear only in validation and test scenarios, so those splits measure generalization beyond
 the surface forms seen in training.
+
+Each fact's ``metric_id`` comes from its name alone (``metric_id_for``), as a simple name-based
+mapper would assign it, never from the scenario's ground truth. A related-but-different measure
+reported under a v1 name ("Adjusted EBITDA" with other adjustments) keeps the v1 id, so the id
+is a hint, not the answer.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
-from opslm.schema import Period, PeriodType
+from opslm.schema import Entity, EntityScope, MetricId, Period, PeriodType
 
 Kind = Literal["currency", "percent"]
 
@@ -66,6 +71,13 @@ CONCEPTS: dict[str, Concept] = {c.key: c for c in [
             company_defined=True),
 ]}
 GENERIC = tuple(k for k, c in CONCEPTS.items() if not c.company_defined)
+_ID_BY_NAME = {n.casefold(): c.key for c in CONCEPTS.values() for n in (*c.names, *c.heldout)}
+_ID_BY_NAME["net loss"] = "net_income"
+
+
+def metric_id_for(name: str) -> MetricId:
+    """The v1 metric a name maps to by name alone, or OTHER."""
+    return MetricId(_ID_BY_NAME.get(name.casefold(), MetricId.OTHER.value))
 COMPANY_DEFINED = tuple(k for k, c in CONCEPTS.items() if c.company_defined)
 
 # Company-defined metrics: each inner tuple is a group of wordings with the SAME meaning;
@@ -174,11 +186,16 @@ class Company:
             text = text.upper()
         return text
 
-    def subsidiary(self, rng: random.Random) -> str:
-        return f"{self.base} {rng.choice(REGIONS)} {rng.choice(SUFFIX_FORMS['Ltd'][:2])}"
+    def entity(self, rng: random.Random, *, vary: bool = False) -> Entity:
+        return Entity(name=self.name(rng, vary=vary))
 
-    def segment(self, rng: random.Random) -> str:
-        return f"{self.base} {rng.choice(SEGMENTS)} segment"
+    def subsidiary(self, rng: random.Random) -> Entity:
+        name = f"{self.base} {rng.choice(REGIONS)} {rng.choice(SUFFIX_FORMS['Ltd'][:2])}"
+        return Entity(name=name, scope=EntityScope.SUBSIDIARY)
+
+    def segment(self, rng: random.Random) -> Entity:
+        return Entity(name=self.name(rng), scope=EntityScope.SEGMENT,
+                      segment=f"{rng.choice(SEGMENTS)} segment")
 
 
 def make_company(rng: random.Random, used: set[str]) -> Company:
@@ -218,12 +235,14 @@ class FiscalCalendar:
         return (f"FY{y}", f"FY {y}", f"Fiscal {y}", f"Fiscal Year {y}", f"FY{y % 100:02d}")
 
     def fy(self, rng: random.Random, *, dated: bool, label: str | None = None) -> Period:
-        return Period(label=label or rng.choice(self.fy_labels()), type=PeriodType.FISCAL_YEAR,
+        return Period(label=label or rng.choice(self.fy_labels()), type=PeriodType.DURATION,
+                      fiscal_year=self.year,
                       start=self.start if dated else None, end=self.end if dated else None)
 
     def fy_long(self) -> Period:
         text = f"Year ended {self.end.strftime('%B')} {self.end.day}, {self.end.year}"
-        return Period(label=text, type=PeriodType.FISCAL_YEAR, start=self.start, end=self.end)
+        return Period(label=text, type=PeriodType.DURATION, fiscal_year=self.year,
+                      start=self.start, end=self.end)
 
     def other_year(self, delta: int) -> FiscalCalendar:
         return FiscalCalendar(self.year + delta, self.end_month)
@@ -231,16 +250,17 @@ class FiscalCalendar:
     def quarter(self, q: int, *, dated: bool) -> Period:
         q_end = _add_months(self.start - timedelta(days=1), 3 * q)
         q_start = _add_months(self.start - timedelta(days=1), 3 * (q - 1)) + timedelta(days=1)
-        return Period(label=f"Q{q} FY{self.year}", type=PeriodType.QUARTER,
-                      start=q_start if dated else None, end=q_end if dated else None)
+        return Period(label=f"Q{q} FY{self.year}", type=PeriodType.DURATION, fiscal_year=self.year,
+                      fiscal_quarter=q, start=q_start if dated else None, end=q_end if dated else None)
 
     def ltm(self) -> Period:
         end = _add_months(self.start - timedelta(days=1), 9)  # trailing twelve months to Q3 end
         start = _add_months(end, -12) + timedelta(days=1)
-        return Period(label=f"LTM {end.strftime('%b %Y')}", type=PeriodType.LTM, start=start, end=end)
+        return Period(label=f"LTM {end.strftime('%b %Y')}", type=PeriodType.DURATION, is_ltm=True,
+                      start=start, end=end)
 
     def calendar_year(self) -> Period:
-        return Period(label=f"Calendar {self.year}", type=PeriodType.CALENDAR_YEAR,
+        return Period(label=f"Calendar {self.year}", type=PeriodType.DURATION,
                       start=date(self.year, 1, 1), end=date(self.year, 12, 31))
 
     def asof(self, rng: random.Random, quarter: int | None = None) -> Period:
@@ -248,7 +268,7 @@ class FiscalCalendar:
         d = self.end if quarter is None else _add_months(self.start - timedelta(days=1), 3 * quarter)
         forms = (f"As of {d.strftime('%B')} {d.day}, {d.year}", f"{d.strftime('%B')} {d.day}, {d.year}",
                  f"At {d.strftime('%b')} {d.day}, {d.year}")
-        return Period(label=rng.choice(forms), type=PeriodType.POINT_IN_TIME, start=d, end=d)
+        return Period(label=rng.choice(forms), type=PeriodType.INSTANT, as_of=d)
 
 
 def make_calendar(rng: random.Random, *, non_december: bool = False) -> FiscalCalendar:

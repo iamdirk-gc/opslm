@@ -1,119 +1,269 @@
-from datetime import date
-from decimal import Decimal
+"""Worked examples and checks for the v0.2.0 schema."""
+
+import json
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from opslm.export_schemas import MODELS, json_schemas, render
 from opslm.schema import (
+    ALLOWED_STATUSES,
     BusinessFact,
-    DiscrepancyReason,
     EvalCase,
-    FactPair,
+    GoldLabel,
     Period,
-    PeriodType,
-    Relation,
-    Scale,
-    SourceKind,
-    SourceRef,
-    Split,
+    ReconciliationInput,
+    ReconciliationOutput,
+    Relationship,
+    ResolutionStatus,
+    evidence_recall,
 )
+from tests.factories import case, fact
+
+DOCS = [
+    {"doc_id": "acme-10k-fy2025", "company": "Acme Software", "document_family": "acme-fy2025",
+     "doc_type": "10-K", "source_url": "https://example.com/acme-10k", "license_note": "SEC filing, public"},
+    {"doc_id": "acme-deck-q4fy25", "company": "Acme Software", "document_family": "acme-fy2025",
+     "doc_type": "investor_presentation"},
+]
+
+REVENUE_10K = {
+    "fact_id": "f1", "metric_label": "Total revenue", "metric_id": "revenue",
+    "entity": {"name": "Acme Software Inc.", "scope": "consolidated"},
+    "period": {"type": "duration", "start": "2025-01-01", "end": "2025-12-31",
+               "fiscal_year": 2025, "label": "FY2025"},
+    "quantity": {"value": "42481000", "unit": "currency", "currency": "USD",
+                 "reported_scale": "1000", "raw_text": "42,481"},
+    "accounting_basis": "gaap", "reporting_status": "audited",
+    "evidence": [{"span_id": "s1", "doc_id": "acme-10k-fy2025", "page": 54, "table_id": "t3",
+                  "text": "Total revenue  42,481"}],
+    "extraction": {"extractor": "docling", "confidence": 0.97},
+}
+
+SALES_DECK = {
+    "fact_id": "f2", "metric_label": "Sales", "metric_id": "revenue",
+    "entity": {"name": "Acme Software", "scope": "consolidated"},
+    "period": {"type": "duration", "fiscal_year": 2025, "label": "FY2025"},  # no dates in the deck
+    "quantity": {"value": "44100000", "unit": "currency", "currency": "USD",
+                 "reported_scale": "1000000", "raw_text": "$44.1M"},
+    "reporting_status": "unaudited",
+    "evidence": [{"span_id": "s2", "doc_id": "acme-deck-q4fy25", "page": 7,
+                  "text": "FY2025 Sales: $44.1M"}],
+    "extraction": {"extractor": "docling", "confidence": 0.91},
+}
+
+ARR_DECK = {
+    "fact_id": "f3", "metric_label": "ARR", "metric_id": "arr",
+    "entity": {"name": "Acme Software", "scope": "consolidated"},
+    "period": {"type": "instant", "as_of": "2025-12-31", "label": "as of Dec 31, 2025"},
+    "quantity": {"value": "39200000", "unit": "currency", "currency": "USD",
+                 "reported_scale": "1000000", "raw_text": "$39.2M"},
+    "accounting_basis": "non_gaap", "reporting_status": "unaudited",
+    "evidence": [{"span_id": "s3", "doc_id": "acme-deck-q4fy25", "page": 4,
+                  "text": "ARR of $39.2M"}],
+    "extraction": {"extractor": "docling"},
+}
 
 
-def make_fact(fact_id="f1", metric="Revenue", value="42.5", **kw):
-    return BusinessFact(
-        fact_id=fact_id,
-        metric=metric,
-        value=Decimal(value),
-        unit="USD",
-        scale=Scale.MILLIONS,
-        entity="Acme Corp",
-        period=Period(label="FY2025", type=PeriodType.FISCAL_YEAR),
-        source=SourceRef(document_id="doc1", location="p.14"),
-        **kw,
-    )
+@pytest.fixture
+def case1():
+    return ReconciliationInput(case_id="c1", fact_a=REVENUE_10K, fact_b=SALES_DECK, documents=DOCS)
 
 
-def test_absolute_value_applies_scale():
-    assert make_fact().absolute_value == Decimal(42500000)
+@pytest.fixture
+def case2():
+    return ReconciliationInput(case_id="c2", fact_a=REVENUE_10K, fact_b=ARR_DECK, documents=DOCS)
 
 
-def test_absolute_value_none_when_missing():
-    fact = BusinessFact(fact_id="x", metric="ARR", source=SourceRef(document_id="d"))
-    assert fact.absolute_value is None
+RESOLVED_CONFLICT = {
+    "case_id": "c1", "relationship": "conflicting", "resolution_status": "resolved_with_conflict",
+    "canonical_value": REVENUE_10K["quantity"], "selected_fact_id": "f1",
+    "conflicting_fact_ids": ["f2"], "reasons": ["value_mismatch", "synonym"],
+    "explanation": "Same metric, entity and period. The audited 10-K figure ($42.5M) is "
+                   "preferred; the deck reports $44.1M, unaudited.",
+    "evidence_refs": ["s1", "s2"],
+    "run": {"system": "frontier_llm", "latency_ms": 1840, "cost_usd": 0.004},
+}
 
 
-def test_pair_requires_distinct_facts():
+def resolved_conflict(**kw):
+    return ReconciliationOutput(**{**RESOLVED_CONFLICT, **kw})
+
+
+# --- worked examples -----------------------------------------------------------------
+
+
+def test_defaults_are_plain_strings_and_dates_may_be_unknown():
+    f2 = BusinessFact(**SALES_DECK)
+    assert f2.accounting_basis == "unknown" and type(f2.accounting_basis) is str
+    assert not f2.period.dates_known and BusinessFact(**REVENUE_10K).period.dates_known
+
+
+def test_classification_only_output_needs_no_resolution(case1):
+    out = ReconciliationOutput(
+        case_id="c1", relationship="conflicting", reasons=["value_mismatch", "synonym"],
+        explanation="Same metric, entity and fiscal year; values differ by $1.6M.",
+        evidence_refs=["s1", "s2"])
+    assert out.resolution_status is None and out.check_references(case1) == []
+
+
+def test_classification_with_resolution(case1):
+    assert resolved_conflict().check_references(case1) == []
+
+
+def test_different_concepts_and_evidence_recall(case2):
+    out = ReconciliationOutput(
+        case_id="c2", relationship="related_but_different", resolution_status="not_applicable",
+        reasons=["definition_mismatch", "period_mismatch"],
+        explanation="ARR is a point-in-time run-rate; revenue is recognized over the fiscal year.",
+        evidence_refs=["s3"])
+    gold = GoldLabel(case_id="c2", relationship="related_but_different", concept_same=False,
+                     scope_same=None, reasons=["definition_mismatch"],
+                     required_evidence_refs=["s1", "s3"], rationale="ARR is not revenue.",
+                     split="test", source="real", labeled_by="nicole", guideline_version="1.1")
+    assert out.check_references(case2) == []
+    assert evidence_recall(out, gold) == 0.5  # cited a real span, but missed one the labeler required
+
+
+def test_abstention_needs_no_evidence_or_value():
+    out = ReconciliationOutput(case_id="c2", relationship="insufficient_evidence",
+                               resolution_status="abstained", reasons=["missing_definition"],
+                               explanation="ARR definition not stated.")
+    assert out.abstained
+
+
+# --- invalid records -----------------------------------------------------------------
+
+INVALID_COMBINATIONS = [
+    (rel.value, st.value) for rel in Relationship for st in ResolutionStatus
+    if st.value not in ALLOWED_STATUSES[rel.value]
+]
+
+
+def test_twelve_invalid_combinations():
+    assert len(INVALID_COMBINATIONS) == 12
+
+
+@pytest.mark.parametrize("rel,status", INVALID_COMBINATIONS)
+def test_relationship_status_outside_allowed_table_is_rejected(rel, status):
+    kw = {}
+    if status in ("resolved", "resolved_with_conflict"):
+        kw = {"canonical_value": REVENUE_10K["quantity"], "selected_fact_id": "f1"}
+    if status == "resolved_with_conflict":
+        kw["conflicting_fact_ids"] = ["f2"]
     with pytest.raises(ValidationError):
-        FactPair(fact_a=make_fact("f1"), fact_b=make_fact("f1"))
+        ReconciliationOutput(case_id="c1", relationship=rel, resolution_status=status,
+                             reasons=["synonym"], explanation="x", evidence_refs=["s1"], **kw)
 
 
-def test_period_rejects_reversed_dates():
+@pytest.mark.parametrize("build", [
+    pytest.param(lambda: resolved_conflict(conflicting_fact_ids=[]),
+                 id="conflict without naming the conflicting fact"),
+    pytest.param(lambda: ReconciliationOutput(
+        case_id="c1", relationship="equivalent", reasons=["synonym"], explanation="x"),
+        id="decision with no evidence_refs"),
+    pytest.param(lambda: ReconciliationOutput(
+        case_id="c1", relationship="equivalent", reasons=["synonym"], explanation="x",
+        evidence_refs=["s1"], conflicting_fact_ids=["f2"]),
+        id="equivalent pair listing a conflict"),
+    pytest.param(lambda: ReconciliationOutput(
+        case_id="c1", relationship="equivalent", reasons=[], explanation="x", evidence_refs=["s1"]),
+        id="no reasons"),
+    pytest.param(lambda: Period(type="instant", start="2025-01-01", label="x"),
+                 id="instant period with a start date"),
+    pytest.param(lambda: Period(type="duration", as_of="2025-01-01", label="x"),
+                 id="duration period with an as_of date"),
+    pytest.param(lambda: Period(type="duration", start="2025-12-31", end="2025-01-01", label="x"),
+                 id="period that ends before it starts"),
+    pytest.param(lambda: BusinessFact(**{**REVENUE_10K, "evidence": []}), id="fact with no evidence"),
+    pytest.param(lambda: BusinessFact(**{**REVENUE_10K, "basis": "gaap"}), id="old single 'basis' field"),
+    pytest.param(lambda: BusinessFact(**{**REVENUE_10K, "quantity": {**REVENUE_10K["quantity"],
+                                                                   "currency": None}}),
+                 id="currency amount without a currency code"),
+    pytest.param(lambda: BusinessFact(**{**REVENUE_10K, "evidence": [
+        {"span_id": "s1", "doc_id": "d", "text": "x"}]}), id="evidence span with no location"),
+    pytest.param(lambda: ReconciliationInput(case_id="c", fact_a=REVENUE_10K, fact_b=REVENUE_10K,
+                                             documents=DOCS), id="pair of the same fact"),
+    pytest.param(lambda: ReconciliationInput(case_id="c", fact_a=REVENUE_10K, fact_b=SALES_DECK,
+                                             documents=DOCS[:1]), id="span from an unlisted document"),
+])
+def test_invalid_records_are_rejected(build):
     with pytest.raises(ValidationError):
-        Period(label="bad", start=date(2025, 12, 31), end=date(2025, 1, 1))
+        build()
 
 
-def test_extra_fields_forbidden():
-    with pytest.raises(ValidationError):
-        SourceRef(document_id="d", bogus=1)
+def test_reference_check_on_a_fabricated_output(case1):
+    bad = ReconciliationOutput(
+        case_id="c1", relationship="equivalent", resolution_status="resolved",
+        canonical_value={"value": "42500000", "unit": "currency", "currency": "EUR", "raw_text": "42.5"},
+        selected_fact_id="f2", reasons=["rounding"], explanation="x", evidence_refs=["s1", "s9"])
+    problems = bad.check_references(case1)
+    assert problems == [
+        "evidence_refs not in input: ['s9']",
+        "canonical_value differs from the selected fact's value",
+        "canonical_value currency differs from the selected fact's currency",
+    ]
+
+
+def test_reference_check_unknown_fact_and_case(case1):
+    out = resolved_conflict(case_id="other", selected_fact_id="f9", conflicting_fact_ids=["f8"])
+    problems = out.check_references(case1)
+    assert "case_id does not match input" in problems
+    assert "selected_fact_id f9 not in input" in problems and "conflicting fact f8 not in input" in problems
+
+
+# --- eval cases ----------------------------------------------------------------------
 
 
 def test_eval_case_json_roundtrip():
-    case = EvalCase(
-        case_id="c1",
-        scenario_id="s1",
-        pair=FactPair(fact_a=make_fact("f1", "Revenue"), fact_b=make_fact("f2", "Total Revenue")),
-        label=Relation.EQUIVALENT,
-        concept_same=True,
-        scope_same=True,
-        rationale="Same entity, period and value; total revenue is the same revenue line.",
-        source_kind=SourceKind.SYNTHETIC,
-        split=Split.TEST,
-        guideline_version="1.0",
-        tags=("synonym",),
-    )
-    assert EvalCase.model_validate_json(case.model_dump_json()) == case
-
-
-def _case(label, reason=None, fields=(), concept=True, scope=True, b_value="50"):
-    return EvalCase(
-        case_id="c1",
-        scenario_id="s1",
-        pair=FactPair(fact_a=make_fact("f1"), fact_b=make_fact("f2", value=b_value)),
-        label=label,
-        concept_same=concept,
-        scope_same=scope,
-        rationale="r",
-        source_kind=SourceKind.SYNTHETIC,
-        split=Split.TEST,
-        guideline_version="1.0",
-        discrepancy_reason=reason,
-        discriminating_fields=fields,
-    )
-
-
-def test_equivalent_forbids_discrepancy_reason():
-    with pytest.raises(ValidationError):
-        _case(Relation.EQUIVALENT, DiscrepancyReason.PERIOD)
-
-
-def test_non_equivalent_requires_discrepancy_reason():
-    with pytest.raises(ValidationError):
-        _case(Relation.CONFLICTING)
-    assert _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, ("value",)).label
-
-
-def test_unknown_discriminating_field_rejected():
-    with pytest.raises(ValidationError):
-        _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, ("not_a_field",))
+    c = case("c1", fact("a"), fact("b", "Total revenue"), "equivalent", tags=["synonym"])
+    assert EvalCase.model_validate_json(c.model_dump_json()) == c
 
 
 def test_label_must_follow_judgments():
+    a, b = fact("a"), fact("b", value="50")
     # values differ, same concept and scope -> must be conflicting, not equivalent
     with pytest.raises(ValidationError, match="contradicts the judgments"):
-        _case(Relation.EQUIVALENT)
+        case("c1", a, b, "equivalent")
     with pytest.raises(ValidationError, match="contradicts the judgments"):
-        _case(Relation.CONFLICTING, DiscrepancyReason.UNEXPLAINED, concept=False)
+        case("c1", a, b, "conflicting", concept=False)
+    assert case("c1", a, b, "conflicting").gold.relationship == "conflicting"
+    assert case("c1", a, fact("b"), "equivalent").gold.relationship == "equivalent"
 
 
-def test_equivalent_case_valid_when_values_agree():
-    assert _case(Relation.EQUIVALENT, b_value="42.5").label is Relation.EQUIVALENT
+def test_gold_label_must_record_both_judgments():
+    with pytest.raises(ValidationError):
+        GoldLabel(case_id="c", relationship="equivalent", reasons=["synonym"], rationale="r",
+                  split="train", source="real", labeled_by="x", guideline_version="1.1")
+
+
+def test_gold_references_must_exist_in_the_input():
+    good = case("c1", fact("a"), fact("b"), "equivalent")
+    with pytest.raises(ValidationError, match="required_evidence_refs not in input"):
+        good.model_validate({**good.model_dump(), "gold": {**good.gold.model_dump(),
+                                                           "required_evidence_refs": ["s9"]}})
+    with pytest.raises(ValidationError, match="canonical_fact_id"):
+        case("c1", fact("a"), fact("b"), "equivalent", canonical_fact_id="zzz")
+    with pytest.raises(ValidationError, match="acceptable_statuses"):
+        case("c1", fact("a"), fact("b"), "equivalent", acceptable_statuses=["abstained"])
+    with pytest.raises(ValidationError, match="does not match input"):
+        EvalCase(input=good.input, gold=good.gold.model_copy(update={"case_id": "c2"}))
+
+
+# --- checked-in examples and JSON Schemas ----------------------------------------------
+
+
+def test_example_case_file_is_valid():
+    data = json.loads(Path("data/examples/example_case.json").read_text())
+    inp = ReconciliationInput.model_validate(data["input"])
+    out = ReconciliationOutput.model_validate(data["output"])
+    assert out.check_references(inp) == []
+    assert out.relationship == "conflicting" and out.selected_fact_id == "f1"
+
+
+@pytest.mark.parametrize("name", list(MODELS))
+def test_checked_in_json_schemas_are_current(name):
+    path = Path("schemas") / f"{name}.schema.json"
+    assert path.read_text() == render(json_schemas()[name]), (
+        f"{path} is stale; run: python -m opslm.export_schemas")

@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "ReasonCode": {
+      "description": "Why the facts match or differ. Also used as difficulty slices in eval.",
+      "enum": [
+        "exact_match",
+        "synonym",
+        "rounding",
+        "unit_scale",
+        "sign_convention",
+        "percent_vs_amount",
+        "currency_mismatch",
+        "period_mismatch",
+        "as_of_mismatch",
+        "entity_mismatch",
+        "definition_mismatch",
+        "basis_mismatch",
+        "restatement",
+        "value_mismatch",
+        "missing_definition",
+        "missing_period",
+        "missing_entity",
+        "unsupported_claim"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "Relationship": {
+      "description": "The core classification label.",
+      "enum": [
+        "equivalent",
+        "related_but_different",
+        "conflicting",
+        "insufficient_evidence"
+      ],
+      "title": "Relationship",
+      "type": "string"
+    },
+    "ResolutionStatus": {
+      "description": "What the system does with the pair.",
+      "enum": [
+        "resolved",
+        "resolved_with_conflict",
+        "not_applicable",
+        "needs_review",
+        "abstained"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    },
+    "Source": {
+      "description": "Where a case came from.",
+      "enum": [
+        "real",
+        "synthetic"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "Split": {
+      "enum": [
+        "train",
+        "validation",
+        "test"
+      ],
+      "title": "Split",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptable_statuses": {
+      "description": "Optional, for the secondary resolution metric. e.g. both needs_review and resolved_with_conflict may be fine.",
+      "items": {
+        "$ref": "#/$defs/ResolutionStatus"
+      },
+      "title": "Acceptable Statuses",
+      "type": "array"
+    },
+    "adjudication_note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Set when labelers disagreed; records the decision and why.",
+      "title": "Adjudication Note"
+    },
+    "canonical_fact_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canonical Fact Id"
+    },
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "concept_same": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Guideline judgment 1: same business concept? None = cannot tell.",
+      "title": "Concept Same"
+    },
+    "guideline_version": {
+      "title": "Guideline Version",
+      "type": "string"
+    },
+    "labeled_by": {
+      "description": "Person who labeled the case, or 'generator' for synthetic labels.",
+      "title": "Labeled By",
+      "type": "string"
+    },
+    "rationale": {
+      "description": "Why this label is correct.",
+      "title": "Rationale",
+      "type": "string"
+    },
+    "reasons": {
+      "description": "Primary reason first; drives the difficulty slice.",
+      "items": {
+        "$ref": "#/$defs/ReasonCode"
+      },
+      "minItems": 1,
+      "title": "Reasons",
+      "type": "array"
+    },
+    "relationship": {
+      "$ref": "#/$defs/Relationship"
+    },
+    "required_evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Evidence Refs",
+      "type": "array"
+    },
+    "reviewed_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reviewed By"
+    },
+    "scope_same": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Guideline judgment 2: same entity and period? None = cannot tell.",
+      "title": "Scope Same"
+    },
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    },
+    "tags": {
+      "description": "Finer slices, e.g. 'same_value_trap', 'heldout_name'.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "relationship",
+    "concept_same",
+    "scope_same",
+    "reasons",
+    "rationale",
+    "split",
+    "source",
+    "labeled_by",
+    "guideline_version"
+  ],
+  "title": "GoldLabel",
+  "type": "object"
+}

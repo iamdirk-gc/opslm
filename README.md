@@ -17,6 +17,7 @@ Given two extracted business facts (metric, value, entity, period, units, defini
 
 | Package | Purpose |
 |---|---|
+| `opslm.schema` | Schema v0.2.0: business facts with evidence spans, the task's input and output, gold labels. JSON Schemas in [`schemas/`](schemas/) |
 | `opslm.eval` | Benchmark harness: accuracy, false matches, evidence traceability, latency, cost |
 | `opslm.datagen` | Synthetic generator: labeled fact pairs for training and candidate pairs for review ([docs](docs/synthetic-data.md)) |
 | `opslm.baselines` | Rules-based and LLM systems. The LLM system is provider-agnostic: Anthropic, any OpenAI-compatible endpoint (vLLM, Ollama, Vertex AI open models), and Gemini on Vertex |

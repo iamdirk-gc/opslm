@@ -1,4 +1,7 @@
-"""Classification metrics over the four-way relation label.
+"""Classification metrics over the four-way relationship label.
+
+Labels are compared as strings (the schema stores enum values), so plain strings and
+``Relationship`` members can be mixed.
 
 Predictions may be ``None`` (the system errored or returned nothing). That counts as a miss
 for the gold class and never as a correct or incorrect prediction of any class.
@@ -10,9 +13,10 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from opslm.schema import Relation
+from opslm.schema import Relationship
 
-Pred = Relation | None
+Label = str
+Pred = str | None
 
 
 class ClassMetrics(BaseModel):
@@ -22,21 +26,21 @@ class ClassMetrics(BaseModel):
     support: int
 
 
-def confusion_matrix(gold: Sequence[Relation], pred: Sequence[Pred]) -> dict[str, dict[str, int]]:
+def confusion_matrix(gold: Sequence[Label], pred: Sequence[Pred]) -> dict[str, dict[str, int]]:
     """Rows are gold labels, columns predicted labels plus ``none`` for missing predictions."""
-    columns = [r.value for r in Relation] + ["none"]
-    matrix = {g.value: dict.fromkeys(columns, 0) for g in Relation}
+    columns = [r.value for r in Relationship] + ["none"]
+    matrix = {g.value: dict.fromkeys(columns, 0) for g in Relationship}
     for g, p in zip(gold, pred, strict=True):
-        matrix[g.value]["none" if p is None else p.value] += 1
+        matrix[Relationship(g).value]["none" if p is None else Relationship(p).value] += 1
     return matrix
 
 
-def per_class(gold: Sequence[Relation], pred: Sequence[Pred]) -> dict[str, ClassMetrics]:
+def per_class(gold: Sequence[Label], pred: Sequence[Pred]) -> dict[str, ClassMetrics]:
     out: dict[str, ClassMetrics] = {}
-    for label in Relation:
-        tp = sum(g is label and p is label for g, p in zip(gold, pred, strict=True))
-        predicted = sum(p is label for p in pred)
-        support = sum(g is label for g in gold)
+    for label in Relationship:
+        tp = sum(g == label and p == label for g, p in zip(gold, pred, strict=True))
+        predicted = sum(p == label for p in pred)
+        support = sum(g == label for g in gold)
         precision = tp / predicted if predicted else 0.0
         recall = tp / support if support else 0.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -44,13 +48,13 @@ def per_class(gold: Sequence[Relation], pred: Sequence[Pred]) -> dict[str, Class
     return out
 
 
-def accuracy(gold: Sequence[Relation], pred: Sequence[Pred]) -> float:
+def accuracy(gold: Sequence[Label], pred: Sequence[Pred]) -> float:
     if not gold:
         return 0.0
-    return sum(g is p for g, p in zip(gold, pred, strict=True)) / len(gold)
+    return sum(p is not None and g == p for g, p in zip(gold, pred, strict=True)) / len(gold)
 
 
-def macro_f1(gold: Sequence[Relation], pred: Sequence[Pred]) -> float:
+def macro_f1(gold: Sequence[Label], pred: Sequence[Pred]) -> float:
     """Mean F1 over the classes that appear in the gold labels.
 
     Classes absent from the gold set are excluded, so a small slice that happens to lack a
@@ -60,17 +64,17 @@ def macro_f1(gold: Sequence[Relation], pred: Sequence[Pred]) -> float:
     return sum(scores) / len(scores) if scores else 0.0
 
 
-def false_match_rate(gold: Sequence[Relation], pred: Sequence[Pred]) -> float | None:
+def false_match_rate(gold: Sequence[Label], pred: Sequence[Pred]) -> float | None:
     """Share of non-equivalent pairs the system called equivalent. None if there are none."""
-    negatives = [p for g, p in zip(gold, pred, strict=True) if g is not Relation.EQUIVALENT]
+    negatives = [p for g, p in zip(gold, pred, strict=True) if g != Relationship.EQUIVALENT]
     if not negatives:
         return None
-    return sum(p is Relation.EQUIVALENT for p in negatives) / len(negatives)
+    return sum(p == Relationship.EQUIVALENT for p in negatives) / len(negatives)
 
 
-def missed_match_rate(gold: Sequence[Relation], pred: Sequence[Pred]) -> float | None:
+def missed_match_rate(gold: Sequence[Label], pred: Sequence[Pred]) -> float | None:
     """Share of equivalent pairs the system did not call equivalent. None if there are none."""
-    positives = [p for g, p in zip(gold, pred, strict=True) if g is Relation.EQUIVALENT]
+    positives = [p for g, p in zip(gold, pred, strict=True) if g == Relationship.EQUIVALENT]
     if not positives:
         return None
-    return sum(p is not Relation.EQUIVALENT for p in positives) / len(positives)
+    return sum(p != Relationship.EQUIVALENT for p in positives) / len(positives)

@@ -15,41 +15,46 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from enum import Enum
 from typing import Any
 
 from opslm.datagen import vocab as V
 from opslm.labels import values_agree
 from opslm.schema import (
+    AccountingBasis,
     BusinessFact,
-    DiscrepancyReason,
+    Entity,
+    EvidenceSpan,
+    ExtractionInfo,
     Period,
-    Relation,
-    Scale,
-    SourceRef,
+    Quantity,
+    ReasonCode,
+    Relationship,
+    SourceDocument,
+    UnitType,
 )
 
-R = DiscrepancyReason
+R = ReasonCode
+
+
+class Scale(int, Enum):
+    """Multiplier a generated number is reported in (e.g. ``$42.5M`` -> MILLIONS)."""
+
+    UNITS = 1
+    THOUSANDS = 1_000
+    MILLIONS = 1_000_000
 
 
 @dataclass(frozen=True)
 class PairSpec:
     a: str
     b: str
-    expect: Relation
+    expect: Relationship
     concept: bool | None
     scope: bool | None
-    reason: DiscrepancyReason | None
-    fields: tuple[str, ...]
+    reasons: tuple[ReasonCode, ...]  # primary first; empty = inferred from the facts (equivalents)
     rationale: str
     tags: tuple[str, ...] = ()
-
-
-@dataclass
-class Scenario:
-    scenario_id: str
-    kind: str
-    facts: dict[str, BusinessFact]
-    pairs: list[PairSpec]
 
 
 _SYMBOL = {"USD": "$", "EUR": "€", "GBP": "£"}
@@ -61,7 +66,11 @@ def _fmt_number(value: Decimal) -> str:
 
 
 class Ctx:
-    """Per-scenario random choices and fact construction."""
+    """Per-scenario random choices and fact construction.
+
+    Each fact comes from its own document; all documents in a scenario share one document
+    family (the scenario id), which is what keeps a scenario inside one split.
+    """
 
     def __init__(self, rng: random.Random, scenario_id: str, company: V.Company,
                  cal: V.FiscalCalendar, *, heldout: bool) -> None:
@@ -70,6 +79,7 @@ class Ctx:
         self.unit = rng.choices(["USD", "EUR", "GBP"], [70, 15, 15])[0]
         self._n = 0
         self.facts: dict[str, BusinessFact] = {}
+        self.docs: dict[str, SourceDocument] = {}
 
     # --- vocabulary ----------------------------------------------------------------------
 
@@ -125,31 +135,53 @@ class Ctx:
                    for dp in ((1, 2) if s is not Scale.UNITS else (0,)) if abs(T) / int(s) >= 1]
         return self.rng.choice(options)
 
+    def quantity(self, shown: Decimal, scale: Scale, unit: str) -> Quantity:
+        """A quantity as reported: ``shown`` in ``scale``, normalized to base units."""
+        raw = f"{abs(shown)}%" if unit == "percent" else _fmt_number(abs(shown))
+        return Quantity(
+            value=shown * int(scale),
+            unit=UnitType.PERCENT if unit == "percent" else UnitType.CURRENCY,
+            currency=None if unit == "percent" else unit,
+            reported_scale=Decimal(int(scale)),
+            raw_text=f"({raw})" if shown < 0 else raw,
+        )
+
     # --- facts ---------------------------------------------------------------------------
 
-    def fact(self, key: str, *, metric: str, T: Decimal, kind: str, entity: str | None,
+    def fact(self, key: str, *, metric: str, T: Decimal, kind: str, entity: Entity | None,
              period: Period | None, scale: Scale | None = None, dp: int | None = None,
              unit: str | None = None, definition: str | None = None,
-             qualifiers: tuple[str, ...] = (), excerpt: str | None = "auto",
+             basis: AccountingBasis = AccountingBasis.UNKNOWN, excerpt: str | None = "auto",
              show_entity: bool = True, show_period: bool = True) -> BusinessFact:
         if scale is None or dp is None:
             scale, dp = self.rep(kind, T)
         unit = unit or (self.unit if kind == "currency" else "percent")
-        value = (T / int(scale)).quantize(Decimal(1).scaleb(-dp), rounding=ROUND_HALF_UP)
+        shown = (T / int(scale)).quantize(Decimal(1).scaleb(-dp), rounding=ROUND_HALF_UP)
         self._n += 1
         doc_type = self.rng.choice(V.DOC_TYPES)
-        loc = (f"Sheet1!C{self.rng.randint(2, 60)}" if doc_type.endswith("workbook")
-               else f"p.{self.rng.randint(2, 90)}")
         if excerpt == "auto":
-            excerpt = (self._excerpt(metric, value, scale, unit, entity if show_entity else None,
+            excerpt = (self._excerpt(metric, shown, scale, unit,
+                                     entity.name if entity and show_entity else None,
                                      period.label if period and show_period else None)
                        if self.rng.random() < 0.6 else None)
+        quantity = self.quantity(shown, scale, unit)
+        doc_id = f"{self.scenario_id}-d{self._n}"
+        self.docs[doc_id] = SourceDocument(doc_id=doc_id, company=self.company.base,
+                                           document_family=self.scenario_id, doc_type=doc_type)
+        workbook = doc_type.endswith("workbook")
+        span = EvidenceSpan(
+            span_id=f"{self.scenario_id}-s{self._n}", doc_id=doc_id,
+            cell_ref=f"C{self.rng.randint(2, 60)}" if workbook else None,
+            page=None if workbook else self.rng.randint(2, 90),
+            # no narrative excerpt: the evidence is the table row, which states neither
+            # entity nor period
+            text=excerpt or f"{metric}  {quantity.raw_text}",
+        )
         fact = BusinessFact(
-            fact_id=f"{self.scenario_id}-f{self._n}", metric=metric, value=value, unit=unit,
-            scale=scale, entity=entity, period=period, definition=definition,
-            qualifiers=qualifiers,
-            source=SourceRef(document_id=f"{self.scenario_id}-d{self._n}", document_type=doc_type,
-                             location=loc, excerpt=excerpt, extractor="synthetic"),
+            fact_id=f"{self.scenario_id}-f{self._n}", metric_label=metric,
+            metric_id=V.metric_id_for(metric), entity=entity, period=period, quantity=quantity,
+            accounting_basis=basis, stated_definition=definition, evidence=[span],
+            extraction=ExtractionInfo(extractor="synthetic"),
         )
         self.facts[key] = fact
         return fact
@@ -176,10 +208,9 @@ class Ctx:
     def conflicting_with(self, other: BusinessFact, key: str, **kw: Any) -> BusinessFact:
         """A fact for the same metric whose displayed value clearly disagrees with `other`."""
         kind = kw["kind"]
-        base = other.absolute_value if other.absolute_value is not None else Decimal(1)
         for _ in range(100):
-            fact = self.fact(key, T=self.perturb(base, kind), **kw)
-            if values_agree(other, fact) is False:
+            fact = self.fact(key, T=self.perturb(other.quantity.value, kind), **kw)
+            if values_agree(other.quantity, fact.quantity) is False:
                 return fact
             self._n -= 1
         raise RuntimeError("could not generate a disagreeing value")
@@ -188,6 +219,11 @@ class Ctx:
 # --- scenario templates -------------------------------------------------------------------
 
 Template = Callable[[Ctx], tuple[str, list[PairSpec]]]
+Reasons = ReasonCode | tuple[ReasonCode, ...]
+
+
+def _r(reasons: Reasons) -> tuple[ReasonCode, ...]:
+    return reasons if isinstance(reasons, tuple) else (reasons,)
 
 
 def _all_pairs(keys: list[str], make: Callable[[str, str], PairSpec]) -> list[PairSpec]:
@@ -195,24 +231,22 @@ def _all_pairs(keys: list[str], make: Callable[[str, str], PairSpec]) -> list[Pa
 
 
 def equivalent(a: str, b: str, rationale: str, *tags: str) -> PairSpec:
-    return PairSpec(a, b, Relation.EQUIVALENT, True, True, None, (), rationale, tags)
+    return PairSpec(a, b, Relationship.EQUIVALENT, True, True, (), rationale, tags)
 
 
-def conflicting(a: str, b: str, reason: DiscrepancyReason, fields: tuple[str, ...],
-                rationale: str, *tags: str) -> PairSpec:
-    return PairSpec(a, b, Relation.CONFLICTING, True, True, reason, fields, rationale, tags)
+def conflicting(a: str, b: str, reasons: Reasons, rationale: str, *tags: str) -> PairSpec:
+    return PairSpec(a, b, Relationship.CONFLICTING, True, True, _r(reasons), rationale, tags)
 
 
-def related(a: str, b: str, concept: bool, scope: bool | None, reason: DiscrepancyReason,
-            fields: tuple[str, ...], rationale: str, *tags: str) -> PairSpec:
-    return PairSpec(a, b, Relation.RELATED_BUT_DIFFERENT, concept, scope, reason, fields,
+def related(a: str, b: str, concept: bool, scope: bool | None, reasons: Reasons,
+            rationale: str, *tags: str) -> PairSpec:
+    return PairSpec(a, b, Relationship.RELATED_BUT_DIFFERENT, concept, scope, _r(reasons),
                     rationale, tags)
 
 
-def insufficient(a: str, b: str, concept: bool | None, scope: bool | None,
-                 reason: DiscrepancyReason, fields: tuple[str, ...], rationale: str,
-                 *tags: str) -> PairSpec:
-    return PairSpec(a, b, Relation.INSUFFICIENT_EVIDENCE, concept, scope, reason, fields,
+def insufficient(a: str, b: str, concept: bool | None, scope: bool | None, reasons: Reasons,
+                 rationale: str, *tags: str) -> PairSpec:
+    return PairSpec(a, b, Relationship.INSUFFICIENT_EVIDENCE, concept, scope, _r(reasons),
                     rationale, tags)
 
 
@@ -230,7 +264,7 @@ def sc_synonym_equivalent(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     long_form = dated and not c.point and ctx.rng.random() < 0.4
     keys = []
     for i, name in enumerate(names):
-        entity = ctx.company.name(ctx.rng, vary=i > 0 and ctx.rng.random() < 0.6)
+        entity = ctx.company.entity(ctx.rng, vary=i > 0 and ctx.rng.random() < 0.6)
         period = ctx.cal.fy_long() if long_form and i == 0 else ctx.period(c, dated)
         ctx.fact(f"f{i}", metric=name, T=T, kind=c.kind, entity=entity, period=period)
         keys.append(f"f{i}")
@@ -244,16 +278,16 @@ def sc_value_conflict(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept()
     T = ctx.true_value(c, allow_negative=True)
     names = ctx.names(c, 3, loss=T < 0)
-    entity = ctx.company.name(ctx.rng)
+    entity = ctx.company.entity(ctx.rng)
     per = ctx.period(c, False, label=ctx.cal.fy_labels()[0])
     a = ctx.fact("a", metric=names[0], T=T, kind=c.kind, entity=entity, period=per)
     ctx.conflicting_with(a, "b", metric=names[1], kind=c.kind, entity=entity, period=per)
-    pairs = [conflicting("a", "b", R.UNEXPLAINED, ("value",),
+    pairs = [conflicting("a", "b", R.VALUE_MISMATCH,
                          "Same concept, entity and period, but the values differ and nothing "
                          "explains it.", "value_conflict")]
     if ctx.rng.random() < 0.7:
         ctx.fact("c", metric=names[2], T=T, kind=c.kind, entity=entity, period=per)
-        pairs += [conflicting("c", "b", R.UNEXPLAINED, ("value",),
+        pairs += [conflicting("c", "b", R.VALUE_MISMATCH,
                               "Same concept, entity and period, but the values differ.",
                               "value_conflict"),
                   equivalent("a", "c", "Same concept, entity and period, and the values agree.",
@@ -265,20 +299,16 @@ def sc_scale_error(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept(("currency",), min_value=2e6)
     names = ctx.names(c, 2)
     T = ctx.true_value(c, min_value=2e6)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=per,
              scale=Scale.MILLIONS, dp=1)
     shown = (T / int(Scale.MILLIONS)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
     wrong_scale = ctx.rng.choice([Scale.UNITS, Scale.THOUSANDS])
     # same numeral, wrong scale: 42.5 reported as units, or 42.5 as thousands
-    ctx.facts["b"] = BusinessFact(
-        fact_id=f"{ctx.scenario_id}-f2", metric=names[1], value=shown, unit=ctx.unit,
-        scale=wrong_scale, entity=entity, period=per,
-        source=SourceRef(document_id=f"{ctx.scenario_id}-d2", document_type="revenue_workbook",
-                         location="Sheet1!C12", extractor="synthetic"),
-    )
+    ctx.fact("b", metric=names[1], T=shown * int(wrong_scale), kind="currency", entity=entity,
+             period=per, scale=wrong_scale, dp=1, excerpt=None)
     return "scale_error", [conflicting(
-        "a", "b", R.SCALE_OR_UNIT, ("scale",),
+        "a", "b", (R.VALUE_MISMATCH, R.UNIT_SCALE),
         f"Same concept, entity and period, but one source reports the number in millions and "
         f"the other as {wrong_scale.name.lower()}, so the values disagree.", "scale_error")]
 
@@ -287,7 +317,7 @@ def sc_rounding(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept(("currency",), min_value=2e6)
     names = ctx.names(c, 3)
     T = ctx.true_value(c, min_value=2e6)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=per,
              scale=Scale.MILLIONS, dp=1)
     ctx.fact("b", metric=names[1], T=T, kind="currency", entity=entity, period=per,
@@ -299,36 +329,41 @@ def sc_rounding(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     return "rounding", [
         equivalent("a", "b", "Same figure; one rounds to $0.1M and the other is exact, and they "
                              "agree within that rounding.", "rounding"),
-        conflicting("a", "c", R.UNEXPLAINED, ("value",),
+        conflicting("a", "c", R.VALUE_MISMATCH,
                     "The figures differ by more than the rounding of the coarser one.",
                     "rounding", "near_miss"),
-        conflicting("b", "c", R.UNEXPLAINED, ("value",),
+        conflicting("b", "c", R.VALUE_MISMATCH,
                     "Both are exact figures and they differ.", "rounding", "near_miss"),
     ]
 
 
+_BASIS_MARKERS = {"non-gaap", "adjusted"}
+
+
 def sc_marker_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
-    entity = ctx.company.name(ctx.rng)
-    kind, qualifiers = "currency", ()
+    entity = ctx.company.entity(ctx.rng)
+    kind, basis, reason = "currency", AccountingBasis.UNKNOWN, R.DEFINITION_MISMATCH
     if ctx.rng.random() < 0.15:  # EBITDA vs Adjusted EBITDA, the sheet's standing example
         c = V.CONCEPTS["adjusted_ebitda"]
-        plain, marked, in_name = "EBITDA", "Adjusted EBITDA", True
+        plain, marked = "EBITDA", "Adjusted EBITDA"
     else:
         c = V.CONCEPTS[ctx.rng.choice(tuple(V.MARKERS_FOR))]
         kind = c.kind
         label, q = ctx.rng.choice(V.MARKERS_FOR[c.key])
         plain = c.names[0]
-        in_name = ctx.rng.random() < 0.6
-        marked = f"{label} {plain[0].lower()}{plain[1:]}" if in_name else plain
-        qualifiers = () if in_name else (q,)
+        # a non-GAAP marker may appear only as the accounting basis, not in the name
+        if q in _BASIS_MARKERS and ctx.rng.random() < 0.4:
+            marked, basis, reason = plain, AccountingBasis.NON_GAAP, R.BASIS_MISMATCH
+        else:
+            marked = f"{label} {plain[0].lower()}{plain[1:]}"
     per = ctx.period(c, False, label=ctx.cal.fy_labels()[0])
     T = ctx.true_value(c)
     a = ctx.fact("a", metric=plain, T=T, kind=kind, entity=entity, period=per)
     same = ctx.rng.random() < 0.5
     _same_or_conflict(ctx, a, "b", same=same, T=T, metric=marked, kind=kind, entity=entity,
-                      period=per, qualifiers=qualifiers)
+                      period=per, basis=basis)
     return "marker_diff", [related(
-        "a", "b", False, True, R.DEFINITION, ("metric",) if in_name else ("qualifiers",),
+        "a", "b", False, True, reason,
         "The qualifier changes what is measured, so these are different concepts regardless "
         "of the numbers.", "marker", "same_value_trap" if same else "different_value")]
 
@@ -341,7 +376,7 @@ def _value_of_kind(ctx: Ctx, kind: str) -> Decimal:
 
 def sc_defined_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     name_a, def_a, kind_a, name_b, def_b, kind_b, point_a, point_b = ctx.rng.choice(V.RELATED_DIFFERENT)
-    entity = ctx.company.name(ctx.rng)
+    entity = ctx.company.entity(ctx.rng)
 
     def period_for(point: bool) -> Period:
         return ctx.cal.asof(ctx.rng) if point else ctx.cal.fy(ctx.rng, dated=False)
@@ -359,10 +394,12 @@ def sc_defined_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
                           period=pb, definition=def_b)
     tag = "unit_mismatch" if kind_a != kind_b else ("same_value_trap" if same else "different_value")
     tags = (tag,) if point_a == point_b else (tag, "flow_vs_point")
+    reasons = ((R.PERCENT_VS_AMOUNT, R.DEFINITION_MISMATCH) if kind_a != kind_b
+               else (R.DEFINITION_MISMATCH,))
     # a flow and a point-in-time measure have no common period, so scope is left undetermined;
     # the label is settled by the concept difference either way
     return "defined_diff", [related(
-        "a", "b", False, True if point_a == point_b else None, R.DEFINITION, ("metric", "definition"),
+        "a", "b", False, True if point_a == point_b else None, reasons,
         "The stated definitions describe different measures, so these are different concepts "
         "regardless of the numbers.", "definition", *tags)]
 
@@ -372,7 +409,7 @@ def sc_company_defined(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = V.CONCEPTS[ctx.rng.choice(V.COMPANY_DEFINED)]
     groups = V.DEFINITION_GROUPS[c.key]
     names = ctx.names(c, 2)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     T = ctx.true_value(c)
     outcome = ctx.rng.choice(["same_def", "same_def", "different_def", "undefined", "undefined"])
     if outcome == "same_def":
@@ -394,15 +431,15 @@ def sc_company_defined(ctx: Ctx) -> tuple[str, list[PairSpec]]:
             pair = equivalent("a", "b", f"{label} is company-defined; both sources state the same "
                               "definition and the values agree.", "company_defined")
         else:
-            pair = conflicting("a", "b", R.UNEXPLAINED, ("value",),
+            pair = conflicting("a", "b", R.VALUE_MISMATCH,
                                f"{label} is company-defined; both sources state the same "
                                "definition but the values differ.", "company_defined")
     elif outcome == "different_def":
-        pair = related("a", "b", False, True, R.DEFINITION, ("definition",),
+        pair = related("a", "b", False, True, R.DEFINITION_MISMATCH,
                        f"{label} is company-defined and the stated definitions differ, so these "
                        "are different measures.", "company_defined")
     else:
-        pair = insufficient("a", "b", None, True, R.MISSING_INFORMATION, ("definition",),
+        pair = insufficient("a", "b", None, True, R.MISSING_DEFINITION,
                             f"{label} is company-defined and the definition is not stated on "
                             "both facts, so comparability cannot be established.",
                             "company_defined", "undefined")
@@ -436,20 +473,21 @@ def sc_period_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     else:
         pa, pb = cal.fy(ctx.rng, dated=True), cal.calendar_year()
     names = ctx.names(c, 2)
-    entity = ctx.company.name(ctx.rng)
+    entity = ctx.company.entity(ctx.rng)
     T = ctx.true_value(c)
     a = ctx.fact("a", metric=names[0], T=T, kind=c.kind, entity=entity, period=pa)
     same = ctx.rng.random() < 0.4
     _same_or_conflict(ctx, a, "b", same=same, T=T, metric=names[1], kind=c.kind, entity=entity,
                       period=pb)
+    reason = R.AS_OF_MISMATCH if c.point else R.PERIOD_MISMATCH
     return "period_mismatch", [related(
-        "a", "b", True, False, R.PERIOD, ("period",),
+        "a", "b", True, False, reason,
         "Same concept and entity, but the periods differ, so the figures are not comparable.",
         variant, "same_value_trap" if same else "different_value")]
 
 
 def sc_entity_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
-    ents = [ctx.company.name(ctx.rng), ctx.company.subsidiary(ctx.rng), ctx.company.segment(ctx.rng)]
+    ents = [ctx.company.entity(ctx.rng), ctx.company.subsidiary(ctx.rng), ctx.company.segment(ctx.rng)]
     ea, eb = ctx.rng.sample(ents, 2)
     c = ctx.concept()
     names = ctx.names(c, 2)
@@ -459,7 +497,7 @@ def sc_entity_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     same = ctx.rng.random() < 0.3
     _same_or_conflict(ctx, a, "b", same=same, T=T, metric=names[1], kind=c.kind, entity=eb, period=per)
     return "entity_mismatch", [related(
-        "a", "b", True, False, R.SCOPE, ("entity",),
+        "a", "b", True, False, R.ENTITY_MISMATCH,
         "Same concept and period, but the figures belong to different entities or segments.",
         "entity", "same_value_trap" if same else "different_value")]
 
@@ -468,16 +506,17 @@ def _missing_pair(ctx: Ctx, missing: str) -> tuple[str, list[PairSpec]]:
     c = ctx.concept()
     names = ctx.names(c, 2)
     T = ctx.true_value(c)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     a = ctx.fact("a", metric=names[0], T=T, kind=c.kind, entity=entity, period=per)
     kw: dict[str, Any] = {"entity": None if missing == "entity" else entity,
                           "period": None if missing == "period" else per,
                           "show_entity": missing != "entity", "show_period": missing != "period"}
     same = ctx.rng.random() < 0.5
     _same_or_conflict(ctx, a, "b", same=same, T=T, metric=names[1], kind=c.kind, **kw)
+    reason = R.MISSING_ENTITY if missing == "entity" else R.MISSING_PERIOD
     return f"missing_{missing}", [insufficient(
-        "a", "b", True, None, R.MISSING_INFORMATION, (missing,),
-        f"The {missing} is missing on one fact and not stated in its excerpt, so scope cannot "
+        "a", "b", True, None, reason,
+        f"The {missing} is missing on one fact and not stated in its evidence, so scope cannot "
         "be established.", f"missing_{missing}")]
 
 
@@ -498,14 +537,14 @@ def _plain_revenue_name(ctx: Ctx) -> str:
 def sc_ambiguous_name(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     ambiguous = ctx.rng.choice(V.AMBIGUOUS_NAMES)
     c = V.CONCEPTS["revenue"]
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     T = ctx.true_value(c)
     a = ctx.fact("a", metric=_plain_revenue_name(ctx), T=T, kind="currency", entity=entity,
                  period=per)
     _same_or_conflict(ctx, a, "b", same=ctx.rng.random() < 0.5, T=T, metric=ambiguous,
                       kind="currency", entity=entity, period=per)
     return "ambiguous_name", [insufficient(
-        "a", "b", None, True, R.MISSING_INFORMATION, ("metric", "definition"),
+        "a", "b", None, True, R.MISSING_DEFINITION,
         f"'{ambiguous}' is not a free synonym of revenue and no definition is given, so it "
         "cannot be established whether the concepts match.", "ambiguous_name")]
 
@@ -514,7 +553,7 @@ def sc_ambiguous_resolved(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     ambiguous = ctx.rng.choice(V.AMBIGUOUS_NAMES)
     same_concept, definition = ctx.rng.choice(V.AMBIGUOUS_RESOLUTIONS)
     c = V.CONCEPTS["revenue"]
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     T = ctx.true_value(c)
     a = ctx.fact("a", metric=_plain_revenue_name(ctx), T=T, kind="currency", entity=entity,
                  period=per, definition=c.definition)
@@ -523,7 +562,7 @@ def sc_ambiguous_resolved(ctx: Ctx) -> tuple[str, list[PairSpec]]:
                       entity=entity, period=per, definition=definition)
     if not same_concept:
         return "ambiguous_resolved", [related(
-            "a", "b", False, True, R.DEFINITION, ("definition",),
+            "a", "b", False, True, R.DEFINITION_MISMATCH,
             f"The definition of '{ambiguous}' restricts it, so it is a different measure.",
             "ambiguous_name", "definition_resolves")]
     if values_same:
@@ -531,7 +570,7 @@ def sc_ambiguous_resolved(ctx: Ctx) -> tuple[str, list[PairSpec]]:
             "a", "b", f"The definition of '{ambiguous}' makes it the same measure and the values "
                       "agree.", "ambiguous_name", "definition_resolves")]
     return "ambiguous_resolved", [conflicting(
-        "a", "b", R.UNEXPLAINED, ("value",),
+        "a", "b", R.VALUE_MISMATCH,
         f"The definition of '{ambiguous}' makes it the same measure, but the values differ.",
         "ambiguous_name", "definition_resolves")]
 
@@ -540,13 +579,13 @@ def sc_currency_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept(("currency",), min_value=2e6)
     names = ctx.names(c, 2)
     T = ctx.true_value(c, min_value=2e6)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     other = ctx.rng.choice([u for u in ("USD", "EUR", "GBP") if u != ctx.unit])
     ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=per)
     ctx.fact("b", metric=names[1], T=T * Decimal(str(round(ctx.rng.uniform(0.85, 1.15), 3))),
              kind="currency", entity=entity, period=per, unit=other)
     return "currency_mismatch", [insufficient(
-        "a", "b", True, True, R.SCALE_OR_UNIT, ("unit",),
+        "a", "b", True, True, R.CURRENCY_MISMATCH,
         f"Same concept, entity and period, but reported in {ctx.unit} and {other}; no conversion "
         "rate is available, so the values cannot be compared.", "currency_mismatch")]
 
@@ -555,26 +594,24 @@ def sc_restatement(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept(("currency",), min_value=2e6)
     names = ctx.names(c, 2)
     T = ctx.true_value(c, min_value=2e6)
-    entity, per = ctx.company.name(ctx.rng), ctx.period(c, False)
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
     a = ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=per,
                  scale=Scale.MILLIONS, dp=1)
     for _ in range(50):
         new_T = ctx.perturb(T, "currency")
         shown = (new_T / int(Scale.MILLIONS)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-        probe = BusinessFact(fact_id="x", metric="x", value=shown, unit=ctx.unit,
-                             scale=Scale.MILLIONS, source=SourceRef(document_id="x"))
-        if values_agree(a, probe) is False:
+        if values_agree(a.quantity, ctx.quantity(shown, Scale.MILLIONS, ctx.unit)) is False:
             break
     reason = ctx.rng.choice(["adoption of a new revenue standard", "correction of a prior-period error",
                              "reclassification of discontinued operations"])
     amt_new = ctx.amount_text(shown, Scale.MILLIONS, ctx.unit)
-    amt_old = ctx.amount_text(a.value, Scale.MILLIONS, ctx.unit)
+    amt_old = ctx.amount_text(a.quantity.reported_value, Scale.MILLIONS, ctx.unit)
     ctx.fact("b", metric=names[1], T=new_T, kind="currency", entity=entity, period=per,
              scale=Scale.MILLIONS, dp=1,
              excerpt=f"{names[1]} for {per.label} was restated to {amt_new} from {amt_old} "
                      f"previously reported, following {reason}.")
     return "restatement", [conflicting(
-        "a", "b", R.RESTATEMENT, ("value",),
+        "a", "b", (R.RESTATEMENT, R.VALUE_MISMATCH),
         "Same concept, entity and period; the later source restates the earlier figure, so the "
         "two values disagree.", "restatement")]
 

@@ -6,7 +6,7 @@ These rules define the gold labels for OpsLM evaluation cases. Two reviewers mus
 
 ## The task
 
-Each case is a pair of extracted business facts. Decide how fact A relates to fact B, **using only the fields shown in the pair** (metric, value, unit, scale, entity, period, definition, qualifiers, source excerpt). Do not use outside knowledge about the real company, and do not look up the filing.
+Each case is a pair of extracted business facts. Decide how fact A relates to fact B, **using only the fields shown in the pair** (metric label and id, value as printed and normalized, entity and scope, period, stated definition, accounting basis and reporting status, and the evidence text from the source document). Do not use outside knowledge about the real company, and do not look up the filing.
 
 ## The four labels
 
@@ -21,7 +21,7 @@ Each case is a pair of extracted business facts. Decide how fact A relates to fa
 
 Make three judgments in order. Each is **yes**, **no**, or **cannot tell**.
 
-1. **Same concept?** Would a careful analyst substitute one metric for the other in a model without changing its meaning, given the definitions and qualifiers shown?
+1. **Same concept?** Would a careful analyst substitute one metric for the other in a model without changing its meaning, given the definitions, qualifiers and accounting basis shown?
 2. **Same scope?** Same entity (legal entity, segment, consolidation basis) **and** same period.
 3. **Values agree?** Computed by code, not by the reviewer (see below).
 
@@ -50,7 +50,7 @@ This table is implemented in `derive_label`. If you disagree with it for a case,
 
 - **Entity:** the same entity, or explicitly the same consolidation basis. A subsidiary vs its parent is a different scope.
 - **Period:** the same period. For point-in-time metrics (cash, ARR) the period is the as-of date, and different as-of dates (year end vs quarter end vs a deck date) are different periods. Labels like "FY2025" are the same only if the dates match or the periods are plainly the same. A fiscal year ending June and a calendar year are different periods. Quarter vs full year is different. LTM vs fiscal year is different.
-- **Cannot tell** if the entity or period is missing on either fact and the source excerpt does not state it.
+- **Cannot tell** if the entity or period is missing on either fact and its evidence text does not state it.
 
 ### 3. Values agree
 
@@ -71,21 +71,30 @@ Computed by `values_agree`, not judged by eye:
 ## Required fields on every case
 
 - **`concept_same`** and **`scope_same`**: your answers to judgments 1 and 2 (`true`, `false`, or `null` for cannot tell). The label is checked against them and against the computed value comparison, and a case whose label contradicts its judgments is rejected when the dataset is loaded. This catches slips such as marking a pair `equivalent` when the numbers disagree.
-- **`discrepancy_reason`** (required unless `equivalent`): the primary reason.
+- **`reasons`** (at least one, **primary reason first**): why the facts match or differ. The primary reason is the difficulty slice results are reported by. Add others only when they also apply (a scale error is `value_mismatch` then `unit_scale`).
 
 | Reason | Use when |
 |---|---|
-| `period` | The periods differ |
-| `scale_or_unit` | Scale, currency or unit differs or is mis-stated |
-| `scope` | Entity, segment or consolidation basis differs |
-| `definition` | Concepts differ by definition or adjustment basis (GAAP vs adjusted, ARR vs revenue) |
-| `restatement` | One source restates the other, and the pair or excerpt shows it |
-| `unexplained` | Same concept and scope, values differ, nothing explains it |
-| `missing_information` | A field needed to judge is absent |
-| `error` | An evident extraction or reporting error (e.g. misplaced decimal) |
-| `other` | None of the above (explain in the rationale) |
+| `exact_match` | Same label and same value |
+| `synonym` | Standard naming variants of the same metric (Revenue vs Net sales) |
+| `rounding` | Values agree only within the rounding of the coarser one ($42.5M vs $42,481K) |
+| `unit_scale` | The scale differs (thousands vs millions), whether or not the values then agree |
+| `sign_convention` | A loss shown different ways: -5.2, (5.2), "net loss of 5.2" |
+| `percent_vs_amount` | One is a percentage and the other an amount (gross margin vs gross profit) |
+| `currency_mismatch` | Different currencies and no conversion available |
+| `period_mismatch` | The periods differ (FY vs quarter, FY vs LTM, fiscal vs calendar year) |
+| `as_of_mismatch` | A point-in-time metric (ARR) at different as-of dates |
+| `entity_mismatch` | Entity, segment or consolidation basis differs |
+| `definition_mismatch` | Concepts differ by definition or adjustments (ARR vs revenue, EBITDA vs Adjusted EBITDA) |
+| `basis_mismatch` | GAAP vs non-GAAP, where only the accounting basis differs |
+| `restatement` | One source restates the other, and the evidence shows it |
+| `value_mismatch` | Same concept and scope, values differ, nothing explains it |
+| `missing_definition` | A definition needed to judge the concept is not stated |
+| `missing_period` | A period needed to judge the scope is not stated |
+| `missing_entity` | An entity needed to judge the scope is not stated |
+| `unsupported_claim` | The evidence does not support the extracted fact (explain in the rationale) |
 
-- **`discriminating_fields`**: the `BusinessFact` fields that determine the label (for example `["period"]` or `["definition", "qualifiers"]`). For `equivalent` cases this may be empty. Systems are scored on whether their cited evidence includes these.
+- **`required_evidence_refs`** (required unless `insufficient_evidence`): the ids of the evidence spans a correct answer has to rely on, usually both facts' spans. Systems are scored on whether their cited `evidence_refs` include these.
 - **`rationale`**: one or two sentences naming the judgments, e.g. "Same entity and period; Sales is a standard synonym of Revenue; $42.5M vs $44.1M disagree."
 - **`tags`**: free-form, for slicing results (`synonym`, `unit_mismatch`, `period_mismatch`, `adjusted_vs_gaap`).
 
@@ -95,24 +104,24 @@ From the plan's example data room (all FY2025, same company):
 
 | A | B | Label | Reason |
 |---|---|---|---|
-| Financial statements: Revenue $42.5M | Revenue workbook: Total revenue $42.5M | `equivalent` | none (standard naming variants, values agree) |
-| Financial statements: Revenue $42.5M | Management presentation: Sales $44.1M | `conflicting` | `unexplained` (same concept and scope, values differ, no definition given) |
-| Financial statements: Revenue $42.5M | Investor presentation: ARR $39.2M | `related_but_different` | `definition` (ARR is a run-rate metric, not recognized revenue) |
+| Financial statements: Revenue $42.5M | Revenue workbook: Total revenue $42.5M | `equivalent` | `synonym` (standard naming variants, values agree) |
+| Financial statements: Revenue $42.5M | Management presentation: Sales $44.1M | `conflicting` | `value_mismatch` (same concept and scope, values differ, no definition given) |
+| Financial statements: Revenue $42.5M | Investor presentation: ARR $39.2M | `related_but_different` | `definition_mismatch` (ARR is a run-rate metric, not recognized revenue) |
 
 More cases:
 
 | A | B | Label | Reason |
 |---|---|---|---|
-| Revenue, FY2025, $42.5M | Revenue, Q3 2025, $11.0M | `related_but_different` | `period` |
-| EBITDA $8.0M | Adjusted EBITDA $8.0M | `related_but_different` | `definition` (same number, different concept) |
-| Revenue $42.5M (USD) | Revenue €39.0M (EUR) | `insufficient_evidence` | `scale_or_unit` (no conversion available) |
-| Revenue, FY2025, entity missing | Revenue, FY2025, Acme Corp | `insufficient_evidence` | `missing_information` |
-| Revenue $42.5M (millions) | Revenue 42.5 (units) | `conflicting` | `scale_or_unit` |
-| Revenue $42.5M | Net revenue $42.5M, no definition | `insufficient_evidence` | `missing_information` (net revenue is not a free variant of revenue) |
-| ARR $39.2M, no definition | Annual recurring revenue $39.2M, no definition | `insufficient_evidence` | `missing_information` (company-defined metric) |
-| Adjusted EBITDA $8.0M, adjustments stated | Adj. EBITDA $8.4M, same adjustments stated | `conflicting` | `unexplained` |
-| Cash $5.0M as of Dec 31 | Cash $5.4M as of Sep 30 | `related_but_different` | `period` (different as-of dates) |
-| Revenue $42.5M in Q3 deck | Revenue $43.1M, note: "restated for ASC 606 adoption" | `conflicting` | `restatement` |
+| Revenue, FY2025, $42.5M | Revenue, Q3 2025, $11.0M | `related_but_different` | `period_mismatch` |
+| EBITDA $8.0M | Adjusted EBITDA $8.0M | `related_but_different` | `definition_mismatch` (same number, different concept) |
+| Revenue $42.5M (USD) | Revenue €39.0M (EUR) | `insufficient_evidence` | `currency_mismatch` (no conversion available) |
+| Revenue, FY2025, entity missing | Revenue, FY2025, Acme Corp | `insufficient_evidence` | `missing_entity` |
+| Revenue $42.5M (millions) | Revenue 42.5 (units) | `conflicting` | `value_mismatch`, `unit_scale` |
+| Revenue $42.5M | Net revenue $42.5M, no definition | `insufficient_evidence` | `missing_definition` (net revenue is not a free variant of revenue) |
+| ARR $39.2M, no definition | Annual recurring revenue $39.2M, no definition | `insufficient_evidence` | `missing_definition` (company-defined metric) |
+| Adjusted EBITDA $8.0M, adjustments stated | Adj. EBITDA $8.4M, same adjustments stated | `conflicting` | `value_mismatch` |
+| ARR $39.2M as of Dec 31 | ARR $37.0M as of Sep 30 | `related_but_different` | `as_of_mismatch` (different as-of dates) |
+| Revenue $42.5M in Q3 deck | Revenue $43.1M, note: "restated for ASC 606 adoption" | `conflicting` | `restatement`, `value_mismatch` |
 
 ## Review process
 
@@ -123,9 +132,9 @@ The mechanics (sheets, commands, import checks) are in [labeling-workflow.md](la
 3. Compute agreement on the overlap (Cohen's kappa on the four labels, and on the same-concept judgment alone). Target kappa of at least 0.7.
 4. Review every disagreement together, decide the correct label, and **write down the rule** that settled it. If the rule is not already in this document, add it and bump the version.
 5. Only after the overlap is reconciled, finish the individual batches. Keep the shared overlap cases in the final test set with the reconciled label.
-6. Set `reviewed: true` only once a case has been labeled under the current guideline version.
+6. A finalized case records who labeled it (`labeled_by`), who confirmed it (`reviewed_by`: the second reviewer on the overlap, or `adjudicated`), and the rule that settled any disagreement (`adjudication_note`).
 
-Cases marked `reviewed: false` can be used for training but never for the reported test results.
+Cases labeled by the generator (`labeled_by: generator`) can be used for training but never for the reported test results. The dataset loader rejects them in the test split, and rejects people's labels made under an older guideline version.
 
 ## Open questions
 

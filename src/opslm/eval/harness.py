@@ -18,7 +18,7 @@ from opslm.eval import metrics as m
 from opslm.eval.stats import bootstrap_ci, mcnemar_exact
 from opslm.labels import GUIDELINE_VERSION
 from opslm.predictor import Predictor
-from opslm.schema import EvalCase, Prediction, Relation
+from opslm.schema import EvalCase, ReconciliationOutput, evidence_recall
 
 
 class Interval(BaseModel):
@@ -28,7 +28,7 @@ class Interval(BaseModel):
 
 
 class EvidenceMetrics(BaseModel):
-    """Whether cited evidence covers the fields that determine the gold label."""
+    """Whether cited evidence covers the spans the gold label marks as required."""
 
     n: int
     recall: float
@@ -51,9 +51,10 @@ class SliceMetrics(BaseModel):
 
 class CaseRecord(BaseModel):
     case_id: str
-    gold: Relation
-    prediction: Prediction | None
+    gold: str
+    prediction: ReconciliationOutput | None
     error: str | None = None
+    reference_problems: list[str] = []
     correct: bool
     latency_s: float | None = None
     cost_usd: float | None = None
@@ -68,6 +69,7 @@ class RunResult(BaseModel):
     config: dict[str, Any]
     n_cases: int
     n_errors: int
+    n_invalid_references: int
     metrics: dict[str, Interval]
     per_class: dict[str, m.ClassMetrics]
     confusion: dict[str, dict[str, int]]
@@ -85,23 +87,26 @@ def _run_cases(predictor: Predictor, cases: Sequence[EvalCase]) -> list[CaseReco
     records = []
     for case in cases:
         start = time.perf_counter()
-        prediction: Prediction | None = None
+        prediction: ReconciliationOutput | None = None
         error: str | None = None
         try:
-            prediction = predictor.predict(case.case_id, case.pair)
+            prediction = predictor.predict(case.input)
         except Exception as e:  # noqa: BLE001 - a failing system is a result, not a harness crash
             error = f"{type(e).__name__}: {e}"
         elapsed = time.perf_counter() - start
-        latency = prediction.latency_s if prediction and prediction.latency_s is not None else elapsed
+        run = prediction.run if prediction else None
+        latency = run.latency_ms / 1000 if run and run.latency_ms is not None else elapsed
         records.append(
             CaseRecord(
                 case_id=case.case_id,
-                gold=case.label,
+                gold=case.gold.relationship,
                 prediction=prediction,
                 error=error,
-                correct=prediction is not None and prediction.label is case.label,
+                reference_problems=prediction.check_references(case.input) if prediction else [],
+                correct=prediction is not None
+                and prediction.relationship == case.gold.relationship,
                 latency_s=latency,
-                cost_usd=prediction.cost_usd if prediction else None,
+                cost_usd=run.cost_usd if run else None,
             )
         )
     return records
@@ -110,12 +115,14 @@ def _run_cases(predictor: Predictor, cases: Sequence[EvalCase]) -> list[CaseReco
 def _evidence(cases: Sequence[EvalCase], records: Sequence[CaseRecord]) -> EvidenceMetrics | None:
     recalls, precisions = [], []
     for case, rec in zip(cases, records, strict=True):
-        gold = set(case.discriminating_fields)
-        if not gold or rec.prediction is None:
+        if rec.prediction is None:
             continue
-        cited = {e.field for e in rec.prediction.evidence}
-        hits = len(gold & cited)
-        recalls.append(hits / len(gold))
+        recall = evidence_recall(rec.prediction, case.gold)
+        if recall is None:
+            continue
+        cited = set(rec.prediction.evidence_refs)
+        hits = len(cited & set(case.gold.required_evidence_refs))
+        recalls.append(recall)
         precisions.append(hits / len(cited) if cited else 0.0)
     if not recalls:
         return None
@@ -137,14 +144,13 @@ def _cost(records: Sequence[CaseRecord]) -> CostMetrics:
 
 
 def _slices(
-    cases: Sequence[EvalCase], gold: list[Relation], pred: list[m.Pred]
+    cases: Sequence[EvalCase], gold: list[str], pred: list[m.Pred]
 ) -> dict[str, dict[str, SliceMetrics]]:
     groups: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for i, case in enumerate(cases):
-        groups["source_kind"][case.source_kind.value].append(i)
-        if case.discrepancy_reason:
-            groups["discrepancy_reason"][case.discrepancy_reason.value].append(i)
-        for tag in case.tags:
+        groups["source"][case.gold.source].append(i)
+        groups["primary_reason"][case.gold.reasons[0]].append(i)
+        for tag in case.gold.tags:
             groups["tag"][tag].append(i)
     return {
         dim: {
@@ -174,17 +180,17 @@ def evaluate(
     """
     cases = list(cases)
     records = _run_cases(predictor, cases)
-    gold = [c.label for c in cases]
-    pred: list[m.Pred] = [r.prediction.label if r.prediction else None for r in records]
+    gold = [c.gold.relationship for c in cases]
+    pred: list[m.Pred] = [r.prediction.relationship if r.prediction else None for r in records]
 
-    def interval(fn: Callable[[Sequence[Relation], Sequence[m.Pred]], float | None]) -> Interval:
+    def interval(fn: Callable[[Sequence[str], Sequence[m.Pred]], float | None]) -> Interval:
         ci = bootstrap_ci(fn, gold, pred, n=bootstrap_n, seed=seed)
         return Interval(value=fn(gold, pred), lo=ci[0] if ci else None, hi=ci[1] if ci else None)
 
     def exact(judgment: str) -> Interval:
         # accuracy of the three-valued judgment (None == "cannot tell" counts as an answer)
         scored = [
-            getattr(rec.prediction, judgment) == getattr(case, judgment)
+            getattr(rec.prediction, judgment) == getattr(case.gold, judgment)
             for case, rec in zip(cases, records, strict=True)
             if rec.prediction is not None
         ]
@@ -199,6 +205,7 @@ def evaluate(
         config=config or {},
         n_cases=len(cases),
         n_errors=sum(r.error is not None for r in records),
+        n_invalid_references=sum(bool(r.reference_problems) for r in records),
         metrics={
             "macro_f1": interval(m.macro_f1),
             "accuracy": interval(m.accuracy),
@@ -268,7 +275,8 @@ def _fmt(i: Interval, pct: bool = True) -> str:
 
 def format_summary(run: RunResult) -> str:
     lines = [
-        f"system: {run.system}   cases: {run.n_cases}   errors: {run.n_errors}",
+        (f"system: {run.system}   cases: {run.n_cases}   errors: {run.n_errors}   "
+         f"invalid references: {run.n_invalid_references}"),
         f"dataset: {run.dataset_hash[:12]}   guideline: {run.guideline_version}",
         "",
     ]

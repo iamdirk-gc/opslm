@@ -22,11 +22,12 @@ def compare_to_construction(
     by_kind: dict[str, list[int]] = {}
     disagreements: list[dict[str, str]] = []
     for r in reviews:
-        gold = by_case.get(r.case_id)
-        if gold is None:
+        case = by_case.get(r.case_id)
+        if case is None:
             continue
+        gold = case.gold
         human = derived_label(by_cand[r.case_id], r)
-        ok = human is gold.label and (r.concept_same, r.scope_same) == (gold.concept_same, gold.scope_same)
+        ok = human == gold.relationship and (r.concept_same, r.scope_same) == (gold.concept_same, gold.scope_same)
         n += 1
         agree += ok
         stats = by_kind.setdefault(gold.tags[0], [0, 0])
@@ -34,7 +35,7 @@ def compare_to_construction(
         stats[1] += ok
         if not ok:
             disagreements.append({"case_id": r.case_id, "kind": gold.tags[0],
-                                  "construction": gold.label.value, "human": human.value})
+                                  "construction": gold.relationship, "human": human.value})
     return {
         "n": n,
         "agreement": agree / n if n else None,

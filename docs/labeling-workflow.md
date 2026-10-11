@@ -35,8 +35,9 @@ and fills the yellow columns only:
 |---|---|
 | `concept_same` | `yes`, `no` or `cannot_tell` (dropdown) |
 | `scope_same` | `yes`, `no` or `cannot_tell` (dropdown) |
-| `discrepancy_reason` | Required unless the pair is equivalent (dropdown) |
-| `discriminating_fields` | Required unless equivalent. Field names from the guidelines, comma separated: `metric`, `qualifiers`, `definition`, `entity`, `period`, `value`, `scale`, `unit` |
+| `primary_reason` | Required (dropdown). The main reason the facts match or differ; codes are in the guidelines |
+| `other_reasons` | Optional. Further reason codes, comma separated |
+| `evidence_refs` | Required unless the label is `insufficient_evidence`. The span ids shown in brackets in the `A_evidence` and `B_evidence` columns, comma separated, e.g. `s-a1, s-b1` |
 | `rationale` | One or two sentences |
 | `flag` | Optional. Anything to raise at the adjudication meeting, such as a guideline question |
 
@@ -46,7 +47,7 @@ write that in `flag`; do not bend the judgments. Leave a row blank to skip it. D
 columns (they are ignored on import). Do not compare notes with the other reviewer.
 
 **3. Import and fix problems.** The importer lists problems in plain language with sheet row
-numbers (for example `row 14 (c13): discrepancy_reason is required`). Fix the sheet and re-run.
+numbers (for example `row 14 (c13): evidence_refs is required for 'conflicting'`). Fix the sheet and re-run.
 
 ```bash
 python -m opslm.labeling_cli import --candidates candidates.jsonl \
@@ -84,10 +85,16 @@ python -m opslm.labeling_cli finalize --candidates candidates.jsonl \
 
 ## Candidate file format
 
-One JSON object per line (`CandidatePair` in `src/opslm/labeling.py`): `case_id`, `scenario_id`,
-`pair` (two business facts), `source_kind`, `split` and optional `tags`. Splits are decided when
-candidates are created, by scenario, so a scenario never spans splits. See
+One JSON object per line (`CandidatePair` in `src/opslm/labeling.py`): `input` (a
+`ReconciliationInput`: the case id, two business facts and their source documents), `source`
+(`real` or `synthetic`), `split` and optional `tags`. Splits are decided when candidates are
+created, by document family, so a company's documents never span splits. See
 `data/examples/candidates_example.jsonl`.
+
+Finalized cases are `{"input": ..., "gold": ...}` lines (`EvalCase` in `src/opslm/schema.py`).
+The gold label records the reviewers' judgments, reasons and evidence, `labeled_by` (the first
+reviewer), `reviewed_by` (the second reviewer on overlap cases, or `adjudicated`) and, for
+adjudicated cases, the deciding rule as `adjudication_note`.
 
 ## Safety notes
 

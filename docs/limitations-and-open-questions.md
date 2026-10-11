@@ -6,7 +6,7 @@ Status as of the evaluation-harness milestone. This document is for the project 
 
 | Piece | State |
 |---|---|
-| Business-fact schema, labels, discrepancy reasons | Built (`opslm.schema`) |
+| Schema v0.2.0: facts with evidence spans, task input and output, gold labels, reason codes | Built (`opslm.schema`; JSON Schemas in `schemas/`) |
 | Label decision table and number comparison | Built (`opslm.labels`) |
 | Labeling guidelines v1.0 | Written, **not yet tested by two reviewers** |
 | JSONL dataset loader with leakage checks | Built (`opslm.data`) |
@@ -18,7 +18,7 @@ Status as of the evaluation-harness milestone. This document is for the project 
 | Benchmark dataset | **None.** Only nine illustrative examples, not benchmark data |
 | Base open-weight and fine-tuned systems | Not started |
 | Synthetic data generator | Not started |
-| Docling / document pipeline | Not started (interface prepared via `SourceRef`) |
+| Docling / document pipeline | Not started (interface prepared via `SourceDocument` and `EvidenceSpan`) |
 
 No number produced so far says anything about real-world performance.
 
@@ -29,7 +29,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Labels and guidelines (most urgent, blocks labeling)
 
 1. **Is the four-label set the right one?** The plan says the system should determine "whether differences are explainable." Today, a pair with different concepts (Revenue vs ARR) is `related_but_different`, and a pair with the same concept and different numbers is `conflicting`. There is no label for "different numbers, but we can explain why" (for example, GAAP vs adjusted, or a restatement). A fifth label such as `explained_difference` is possible. Adding it later is costly.
-   - *Default:* four labels; explanations are captured only in `discrepancy_reason`.
+   - *Default:* four labels; explanations are captured only in the reason codes (`reasons`, for example `restatement` or `basis_mismatch`).
 2. **Restatements.** If one source restates another, is that `conflicting` or something else?
    - *Default:* `conflicting` with reason `restatement`.
 3. **Naming variants (answered by the board's Metric Definitions, adopted in guidelines v1.1).** Revenue, Total revenue, Net sales, Sales and Turnover are equivalent when definition, entity and period match, so the plan's $42.5M vs $44.1M example is `conflicting`. "Net revenue" is conditional (equivalent only when the company reports no separate gross revenue line). Note the original plan document lists Revenue vs Net Revenue as equivalent; the board supersedes it. Please confirm.

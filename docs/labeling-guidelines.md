@@ -39,10 +39,10 @@ This table is implemented in `derive_label`. If you disagree with it for a case,
 
 ### 1. Same concept
 
-- **Standard naming variants are the same concept** unless a qualifier or definition on either fact signals a difference. The variants for the v1 metrics are in [metric-set-v1.md](metric-set-v1.md) (for example Revenue, Total revenue, Net sales, Sales and Turnover; Net income and Net earnings; Cash and Cash and cash equivalents).
+- **Standard naming variants are the same concept** unless a qualifier or definition on either fact signals a difference. The variants for the v1 metrics are in [metric-set-v1.md](metric-set-v1.md) (for example Revenue, Total revenue, Net sales, Sales and Turnover; Net income and Net earnings).
 - **"Net revenue" is not a free variant of revenue.** It is the same concept only when a definition shows the company reports no separate gross revenue line. Without that, the judgment is `cannot_tell`.
-- **Company-defined metrics** (ARR, Adjusted EBITDA, free cash flow) mean what each company defines them to mean. Same concept only if **both** facts state definitions (or adjustments) that match. Both state definitions that differ: different concept. A definition missing on either fact: `cannot_tell`, even when the names are identical.
-- **Different concept** when either fact carries a qualifier or definition that changes meaning: GAAP vs adjusted or non-GAAP, gross vs net where stated, recognized revenue vs a run-rate or contract measure (ARR, bookings, billings, backlog), EBITDA vs Adjusted EBITDA, pro forma vs reported, a percentage vs the same measure in currency (gross margin vs gross profit, FCF vs FCF margin), net income attributable to the company vs including noncontrolling interests.
+- **Company-defined metrics** (ARR, Adjusted EBITDA) mean what each company defines them to mean. Same concept only if **both** facts state definitions (or adjustments) that match. Both state definitions that differ: different concept. A definition missing on either fact: `cannot_tell`, even when the names are identical.
+- **Different concept** when either fact carries a qualifier or definition that changes meaning: GAAP vs adjusted or non-GAAP, gross vs net where stated, recognized revenue vs a run-rate or contract measure (ARR, bookings, billings, backlog), EBITDA vs Adjusted EBITDA, pro forma vs reported, a percentage vs the same measure in currency (gross margin vs gross profit, Adjusted EBITDA vs Adjusted EBITDA margin), net income attributable to the company vs including noncontrolling interests.
 - **Cannot tell** when the metric names are not standard variants and no definition is provided, for example "Core Revenue" vs "Revenue" with no definition for Core.
 - Different concept never depends on the numbers. Two different metrics with the same value are still `related_but_different`.
 
@@ -135,7 +135,7 @@ Cases marked `reviewed: false` can be used for training but never for the report
 ## Changes from v1.0 (for owner review)
 
 1. "Net revenue" is no longer a free variant of revenue (board: equivalent only when the company reports no separate gross revenue line).
-2. Company-defined metrics (ARR, Adjusted EBITDA, free cash flow) require matching stated definitions to be the same concept (board: "insufficient evidence: ARR stated without a definition").
+2. Company-defined metrics (ARR, Adjusted EBITDA) require matching stated definitions to be the same concept (board: "insufficient evidence: ARR stated without a definition").
 3. Point-in-time metrics are compared on their as-of date.
 4. Percent vs currency forms of a measure are different concepts.
 5. Sign handling stated explicitly (open question about normalization).

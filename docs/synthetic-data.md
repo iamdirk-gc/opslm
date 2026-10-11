@@ -12,7 +12,7 @@ A **scenario** is a small synthetic data room: one fictional company, a fiscal c
 facts as different documents would report them, and the pairs worth comparing. Because each
 scenario is its own company, splitting by scenario also splits by company.
 
-Fifteen scenario templates cover the cases on the project board:
+Eighteen scenario templates cover the cases on the project board:
 
 | Template | Produces |
 |---|---|
@@ -21,9 +21,12 @@ Fifteen scenario templates cover the cases on the project board:
 | `value_conflict`, `restatement` | Conflicting: same concept, entity and period, different values (restatements carry evidence text saying so) |
 | `scale_error`, `currency_mismatch` | Conflicting (scale) and insufficient evidence (currency, no conversion) |
 | `marker_diff` | Related: Adjusted/Non-GAAP/Pro forma/Gross qualifiers, EBITDA vs Adjusted EBITDA |
+| `basis_diff` | Related: the same metric label under a GAAP and a non-GAAP basis |
 | `defined_diff` | Related: different measures with stated definitions (revenue vs ARR, gross margin vs gross profit, EBITDA vs Adjusted EBITDA, and others from the board) |
 | `company_defined` | ARR and Adjusted EBITDA: equivalent or conflicting when definitions match, related when they differ, insufficient evidence when a definition is missing |
 | `period_mismatch` | Related: FY vs quarter, FY vs prior FY, LTM vs FY, calendar vs fiscal year |
+| `as_of_mismatch` | Related: ARR (point in time) with matching stated definitions at different as-of dates |
+| `sign_convention` | Equivalent: the same loss written as (5.2), -5.2 or 5.2 under "Net loss"; conflicting: a loss recorded as a profit |
 | `entity_mismatch` | Related: parent vs subsidiary vs segment |
 | `missing_entity`, `missing_period` | Insufficient evidence; the fact's evidence text never states the missing field |
 | `ambiguous_name`, `ambiguous_resolved` | "Net revenue", "Core revenue" without a definition (insufficient) and with a resolving definition |

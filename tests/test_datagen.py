@@ -95,10 +95,13 @@ def test_test_candidates_match_construction_cases(big):
     assert all(c.split == Split.TEST for c in big.test_candidates)
 
 
-def test_rules_baseline_is_not_at_ceiling(big):
-    # a generator built from the baseline's own vocabulary would score near 100% here
+def test_rules_baseline_is_strong_on_names_but_cannot_read_definitions(big):
+    # The baseline knows every naming variant on the metric page (a test requires it), so it does
+    # well on synthetic names. A generator whose hard cases were solvable by lookup would score
+    # near 100% here; the cases that need a definition read must stay out of its reach.
     run = evaluate(RulesBaseline(), big.train, bootstrap_n=0)
-    assert run.metrics["accuracy"].value < 0.8
+    assert run.metrics["accuracy"].value < 0.95
+    assert run.slices["tag"]["definition_resolves"].accuracy < 0.5
 
 
 def _pairs(cases):

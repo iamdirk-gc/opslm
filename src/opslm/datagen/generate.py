@@ -30,9 +30,7 @@ from opslm.schema import (
     CONSTRUCTION_LABELER,
     EvalCase,
     GoldLabel,
-    ReasonCode,
     ReconciliationInput,
-    Relationship,
     Source,
     Split,
 )
@@ -64,8 +62,6 @@ def _case(spec: PairSpec, ctx: Ctx, kind: str, j: int, split: Split) -> EvalCase
             f"(values {a.quantity.raw_text} / {b.quantity.raw_text})"
         )
     reasons = list(spec.reasons) or infer_reasons(a, b, spec.concept, spec.scope, agree)
-    if label == Relationship.EQUIVALENT and (a.quantity.value < 0 or b.quantity.value < 0):
-        reasons.append(ReasonCode.SIGN_CONVENTION)
     case_id = f"{ctx.scenario_id}-p{j}"
     doc_ids = {s.doc_id for f in (a, b) for s in f.evidence}
     return EvalCase(

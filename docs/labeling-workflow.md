@@ -56,7 +56,8 @@ python -m opslm.labeling_cli import --candidates candidates.jsonl \
 
 **4. Agreement and adjudication sheet.** Run once both reviewers have imported. This prints
 agreement and Cohen's kappa on the shared cases (target for the label: at least 0.7) and writes
-a sheet containing every disagreement and every flagged case.
+a sheet containing every disagreement, every case where the reviewers agree on the judgments
+but differ on the primary reason or the evidence spans, and every flagged case.
 
 ```bash
 python -m opslm.labeling_cli agreement --candidates candidates.jsonl \

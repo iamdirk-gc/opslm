@@ -41,6 +41,8 @@ def _add_run_args(run: argparse.ArgumentParser) -> None:
     g.add_argument("--model", help="model id as the provider names it (required)")
     g.add_argument("--show-values", action="store_true",
                    help="show numeric values to the model (off by default)")
+    g.add_argument("--show-metric-id", action="store_true",
+                   help="show the upstream metric_id hint to the model (off by default)")
     g.add_argument("--price-in", type=float, help="USD per million input tokens")
     g.add_argument("--price-out", type=float, help="USD per million output tokens")
     g.add_argument("--estimate-only", action="store_true",
@@ -86,7 +88,8 @@ def main(argv: list[str] | None = None) -> None:
                 if args.price_in is not None and args.price_out is not None
                 else MODEL_PRICES.get(args.model)
             )
-            est = estimate_cost([c.input for c in cases], prices, show_values=args.show_values)
+            est = estimate_cost([c.input for c in cases], prices, show_values=args.show_values,
+                               show_metric_id=args.show_metric_id)
             lo, hi = est["output_tokens_assumed_per_pair"]
             cost = (
                 f"${est['cost_usd_range'][0]:.2f}-${est['cost_usd_range'][1]:.2f}"
@@ -99,7 +102,8 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if not args.confirm_spend:
                 parser.error("this system makes model calls; re-run with --confirm-spend")
-            predictor = LLMPredictor(_backend(args), show_values=args.show_values, prices=prices)
+            predictor = LLMPredictor(_backend(args), show_values=args.show_values,
+                                     show_metric_id=args.show_metric_id, prices=prices)
         result = evaluate(predictor, cases, bootstrap_n=args.bootstrap, seed=args.seed)
         if hasattr(predictor, "describe"):
             result.config.update(predictor.describe())

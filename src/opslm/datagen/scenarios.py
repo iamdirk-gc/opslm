@@ -135,15 +135,21 @@ class Ctx:
                    for dp in ((1, 2) if s is not Scale.UNITS else (0,)) if abs(T) / int(s) >= 1]
         return self.rng.choice(options)
 
-    def quantity(self, shown: Decimal, scale: Scale, unit: str) -> Quantity:
-        """A quantity as reported: ``shown`` in ``scale``, normalized to base units."""
+    def quantity(self, shown: Decimal, scale: Scale, unit: str,
+                 sign_style: str | None = None) -> Quantity:
+        """A quantity as reported: ``shown`` in ``scale``, normalized to base units.
+
+        ``sign_style`` is how a negative number is printed: 'paren' (the default), 'minus', or
+        'label' (no mark, the metric name such as 'Net loss' carries the sign)."""
         raw = f"{abs(shown)}%" if unit == "percent" else _fmt_number(abs(shown))
+        if shown < 0:
+            raw = {"minus": f"-{raw}", "label": raw}.get(sign_style or "paren", f"({raw})")
         return Quantity(
             value=shown * int(scale),
             unit=UnitType.PERCENT if unit == "percent" else UnitType.CURRENCY,
             currency=None if unit == "percent" else unit,
             reported_scale=Decimal(int(scale)),
-            raw_text=f"({raw})" if shown < 0 else raw,
+            raw_text=raw,
         )
 
     # --- facts ---------------------------------------------------------------------------
@@ -152,7 +158,8 @@ class Ctx:
              period: Period | None, scale: Scale | None = None, dp: int | None = None,
              unit: str | None = None, definition: str | None = None,
              basis: AccountingBasis = AccountingBasis.UNKNOWN, excerpt: str | None = "auto",
-             show_entity: bool = True, show_period: bool = True) -> BusinessFact:
+             show_entity: bool = True, show_period: bool = True,
+             sign_style: str | None = None) -> BusinessFact:
         if scale is None or dp is None:
             scale, dp = self.rep(kind, T)
         unit = unit or (self.unit if kind == "currency" else "percent")
@@ -162,9 +169,10 @@ class Ctx:
         if excerpt == "auto":
             excerpt = (self._excerpt(metric, shown, scale, unit,
                                      entity.name if entity and show_entity else None,
-                                     period.label if period and show_period else None)
+                                     period.label if period and show_period else None,
+                                     sign_style)
                        if self.rng.random() < 0.6 else None)
-        quantity = self.quantity(shown, scale, unit)
+        quantity = self.quantity(shown, scale, unit, sign_style)
         doc_id = f"{self.scenario_id}-d{self._n}"
         self.docs[doc_id] = SourceDocument(doc_id=doc_id, company=self.company.base,
                                            document_family=self.scenario_id, doc_type=doc_type)
@@ -186,18 +194,21 @@ class Ctx:
         self.facts[key] = fact
         return fact
 
-    def amount_text(self, value: Decimal, scale: Scale, unit: str) -> str:
+    def amount_text(self, value: Decimal, scale: Scale, unit: str,
+                    sign_style: str | None = None) -> str:
         v = abs(value)
         if unit == "percent":
             text = f"{v}%"
         else:
             text = f"{_SYMBOL.get(unit, '')}{_fmt_number(v)}{_SCALE_WORD[scale]}" + (
                 "" if unit in _SYMBOL else f" {unit}")
-        return f"({text})" if value < 0 else text
+        if value >= 0 or sign_style == "label":
+            return text
+        return f"-{text}" if sign_style == "minus" else f"({text})"
 
     def _excerpt(self, metric: str, value: Decimal, scale: Scale, unit: str,
-                 entity: str | None, period: str | None) -> str:
-        amt = self.amount_text(value, scale, unit)
+                 entity: str | None, period: str | None, sign_style: str | None = None) -> str:
+        amt = self.amount_text(value, scale, unit, sign_style)
         per = period or "the period"
         options = [f"{metric} was {amt} for {per}.", f"{per}: {metric} {amt}."]
         if entity:
@@ -368,6 +379,23 @@ def sc_marker_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
         "of the numbers.", "marker", "same_value_trap" if same else "different_value")]
 
 
+def sc_basis_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
+    """The same metric label under GAAP and non-GAAP accounting (the page's 72% vs 76% case)."""
+    c = ctx.concept(keys=("gross_margin", "net_income", "revenue"))
+    name = c.names[0]
+    entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False, label=ctx.cal.fy_labels()[0])
+    T = ctx.true_value(c)
+    a = ctx.fact("a", metric=name, T=T, kind=c.kind, entity=entity, period=per,
+                 basis=AccountingBasis.GAAP)
+    same = ctx.rng.random() < 0.4
+    _same_or_conflict(ctx, a, "b", same=same, T=T, metric=name, kind=c.kind, entity=entity,
+                      period=per, basis=AccountingBasis.NON_GAAP)
+    return "basis_diff", [related(
+        "a", "b", False, True, R.BASIS_MISMATCH,
+        "One figure is on a GAAP basis and the other non-GAAP, so they measure different things "
+        "even under the same label.", "basis", "same_value_trap" if same else "different_value")]
+
+
 def _value_of_kind(ctx: Ctx, kind: str) -> Decimal:
     if kind == "percent":
         return Decimal(f"{ctx.rng.uniform(5, 70):.1f}")
@@ -448,20 +476,13 @@ def sc_company_defined(ctx: Ctx) -> tuple[str, list[PairSpec]]:
 
 def sc_period_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     c = ctx.concept()
-    if c.point:
-        variant = ctx.rng.choice(["asof_year_end_vs_quarter_end", "asof_vs_prior_year_end"])
-    else:
-        variant = ctx.rng.choice(["fy_vs_quarter", "fy_vs_prior_fy", "quarter_vs_quarter",
-                                  "ltm_vs_fy", "calendar_vs_fiscal"])
+    variant = ctx.rng.choice(["fy_vs_quarter", "fy_vs_prior_fy", "quarter_vs_quarter",
+                              "ltm_vs_fy", "calendar_vs_fiscal"])
     if variant == "calendar_vs_fiscal":
         ctx.cal = V.make_calendar(ctx.rng, non_december=True)
     dated = ctx.rng.random() < 0.5 or variant in ("ltm_vs_fy", "calendar_vs_fiscal")
     cal = ctx.cal
-    if variant == "asof_year_end_vs_quarter_end":
-        pa, pb = cal.asof(ctx.rng), cal.asof(ctx.rng, quarter=ctx.rng.randint(1, 3))
-    elif variant == "asof_vs_prior_year_end":
-        pa, pb = cal.asof(ctx.rng), cal.other_year(-1).asof(ctx.rng)
-    elif variant == "fy_vs_quarter":
+    if variant == "fy_vs_quarter":
         pa, pb = cal.fy(ctx.rng, dated=dated), cal.quarter(ctx.rng.randint(1, 4), dated=dated)
     elif variant == "fy_vs_prior_fy":
         pa, pb = cal.fy(ctx.rng, dated=dated), cal.other_year(-1).fy(ctx.rng, dated=dated)
@@ -479,9 +500,8 @@ def sc_period_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     same = ctx.rng.random() < 0.4
     _same_or_conflict(ctx, a, "b", same=same, T=T, metric=names[1], kind=c.kind, entity=entity,
                       period=pb)
-    reason = R.AS_OF_MISMATCH if c.point else R.PERIOD_MISMATCH
     return "period_mismatch", [related(
-        "a", "b", True, False, reason,
+        "a", "b", True, False, R.PERIOD_MISMATCH,
         "Same concept and entity, but the periods differ, so the figures are not comparable.",
         variant, "same_value_trap" if same else "different_value")]
 
@@ -616,6 +636,58 @@ def sc_restatement(ctx: Ctx) -> tuple[str, list[PairSpec]]:
         "two values disagree.", "restatement")]
 
 
+def sc_as_of_mismatch(ctx: Ctx) -> tuple[str, list[PairSpec]]:
+    """ARR is a point-in-time, company-defined metric: with matching stated definitions the only
+    open question is the as-of date."""
+    c = V.CONCEPTS["arr"]
+    names = ctx.names(c, 2)
+    group = ctx.rng.choice(V.DEFINITION_GROUPS["arr"])
+    def_a, def_b = ctx.rng.sample(group, 2) if len(group) > 1 else (group[0], group[0])
+    cal, entity = ctx.cal, ctx.company.entity(ctx.rng)
+    variant = ctx.rng.choice(["year_end_vs_quarter_end", "vs_prior_year_end"])
+    pa = cal.asof(ctx.rng)
+    pb = (cal.asof(ctx.rng, quarter=ctx.rng.randint(1, 3)) if variant == "year_end_vs_quarter_end"
+          else cal.other_year(-1).asof(ctx.rng))
+    T = ctx.true_value(c)
+    a = ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=pa, definition=def_a)
+    same = ctx.rng.random() < 0.4
+    _same_or_conflict(ctx, a, "b", same=same, T=T, metric=names[1], kind="currency", entity=entity,
+                      period=pb, definition=def_b)
+    return "as_of_mismatch", [related(
+        "a", "b", True, False, R.AS_OF_MISMATCH,
+        "Both sources state the same definition of ARR, but at different as-of dates, so the "
+        "figures are not comparable.", variant, "same_value_trap" if same else "different_value")]
+
+
+def sc_sign_convention(ctx: Ctx) -> tuple[str, list[PairSpec]]:
+    """Net income and loss are written many ways: (5.2), -5.2, or 5.2 under the label 'Net loss'."""
+    c = V.CONCEPTS["net_income"]
+    magnitude = ctx.true_value(c)
+    T = -abs(magnitude)
+    entity, per = ctx.company.entity(ctx.rng), ctx.cal.fy(ctx.rng, dated=False)
+    others = [n for n in ctx.names(c, 4, loss=True) if n != "Net loss"] or ["Net income"]
+
+    if ctx.rng.random() < 0.7:  # the same loss written in different styles
+        styles = ctx.rng.sample(["label", "paren", "minus"], ctx.rng.choice([2, 3]))
+        keys = []
+        for i, style in enumerate(styles):
+            metric = "Net loss" if style == "label" else ctx.rng.choice(others)
+            ctx.fact(f"f{i}", metric=metric, T=T, kind="currency", entity=entity, period=per,
+                     sign_style=style)
+            keys.append(f"f{i}")
+        return "sign_convention", _all_pairs(keys, lambda a, b: equivalent(
+            a, b, "The same loss, written with different sign conventions; once the sign is read "
+                  "correctly the values agree.", "sign_convention"))
+
+    # a lost sign: one source prints the loss as a positive number under a profit label
+    ctx.fact("a", metric=others[0], T=T, kind="currency", entity=entity, period=per, sign_style="paren")
+    ctx.fact("b", metric=others[-1], T=abs(T), kind="currency", entity=entity, period=per)
+    return "sign_convention", [conflicting(
+        "a", "b", (R.VALUE_MISMATCH, R.SIGN_CONVENTION),
+        "Same concept, entity and period, but one source records a loss and the other the same "
+        "number as a profit, so the signed values disagree.", "sign_convention", "sign_error")]
+
+
 TEMPLATES: dict[str, tuple[Template, int]] = {
     # name -> (template, default weight)
     "synonym_equivalent": (sc_synonym_equivalent, 16),
@@ -623,9 +695,12 @@ TEMPLATES: dict[str, tuple[Template, int]] = {
     "scale_error": (sc_scale_error, 4),
     "rounding": (sc_rounding, 5),
     "marker_diff": (sc_marker_diff, 8),
+    "basis_diff": (sc_basis_diff, 3),
     "defined_diff": (sc_defined_diff, 12),
     "company_defined": (sc_company_defined, 10),
     "period_mismatch": (sc_period_mismatch, 10),
+    "as_of_mismatch": (sc_as_of_mismatch, 4),
+    "sign_convention": (sc_sign_convention, 5),
     "entity_mismatch": (sc_entity_mismatch, 6),
     "missing_entity": (sc_missing_entity, 5),
     "missing_period": (sc_missing_period, 5),

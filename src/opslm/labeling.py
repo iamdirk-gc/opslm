@@ -39,6 +39,7 @@ from opslm.schema import (
     Relationship,
     Source,
     Split,
+    reasons_problem,
 )
 
 VERDICTS = ("yes", "no", "cannot_tell")
@@ -336,6 +337,10 @@ def _parse_judgments(
     if bad:
         problems.append(f"{where}: unknown reason {', '.join(map(repr, bad))}; see the "
                         "primary_reason dropdown for valid codes")
+    elif primary:
+        misfit = reasons_problem(label.value, reasons)
+        if misfit:
+            problems.append(f"{where}: your judgments give '{label.value}', but {misfit}")
 
     refs = _items(col("evidence_refs"))
     unknown = [r for r in refs if r not in candidate.input.span_ids()]
@@ -436,6 +441,7 @@ class Agreement(_Model):
     scope_agreement: float
     scope_kappa: float | None
     disagreements: list[str]
+    details_differ: list[str]  # judgments agree but the primary reason or evidence spans differ
     flagged: list[str]
 
 
@@ -443,7 +449,9 @@ def compare_reviews(
     a: Iterable[Review], b: Iterable[Review], candidates: Iterable[CandidatePair]
 ) -> Agreement:
     """Agreement on the cases both reviewers did. A case is a disagreement if the final label
-    or either judgment differs."""
+    or either judgment differs. Cases where the judgments agree but the primary reason or the
+    evidence spans differ are reported separately (``details_differ``), because the gold label
+    stores both and they are scored."""
     by_id = {c.case_id: c for c in candidates}
     ra, rb = {r.case_id: r for r in a}, {r.case_id: r for r in b}
     shared = sorted(set(ra) & set(rb))
@@ -455,15 +463,18 @@ def compare_reviews(
     def agree(pair: tuple[list[str], list[str]]) -> float:
         return sum(p == q for p, q in zip(*pair, strict=True)) / len(shared) if shared else 0.0
 
+    disagreements = [
+        i for k, i in enumerate(shared)
+        if lab[0][k] != lab[1][k] or con[0][k] != con[1][k] or sco[0][k] != sco[1][k]
+    ]
+    details_differ = [i for i in shared if i not in disagreements and not _same_details(ra[i], rb[i])]
     return Agreement(
         n=len(shared),
         label_agreement=agree(lab), label_kappa=cohen_kappa(*lab),
         concept_agreement=agree(con), concept_kappa=cohen_kappa(*con),
         scope_agreement=agree(sco), scope_kappa=cohen_kappa(*sco),
-        disagreements=[
-            i for k, i in enumerate(shared)
-            if lab[0][k] != lab[1][k] or con[0][k] != con[1][k] or sco[0][k] != sco[1][k]
-        ],
+        disagreements=disagreements,
+        details_differ=details_differ,
         flagged=[i for i in shared if ra[i].flag or rb[i].flag],
     )
 
@@ -475,10 +486,12 @@ def disagreement_rows(
     by_id = {c.case_id: c for c in candidates}
     ra, rb = {r.case_id: r for r in a}, {r.case_id: r for r in b}
     rows = []
-    for case_id in sorted(set(agreement.disagreements) | set(agreement.flagged)):
+    needs_row = set(agreement.disagreements) | set(agreement.details_differ) | set(agreement.flagged)
+    for case_id in sorted(needs_row):
         c = by_id[case_id]
-        row = {"case_id": case_id, "values_agree": _agree_text(c),
-               "why": "disagree" if case_id in agreement.disagreements else "flagged"}
+        why = ("disagree" if case_id in agreement.disagreements
+               else "reason or evidence differs" if case_id in agreement.details_differ else "flagged")
+        row = {"case_id": case_id, "values_agree": _agree_text(c), "why": why}
         row.update(_candidate_cells(c))
         for prefix, review in zip(_REVIEW_PREFIXES, (ra[case_id], rb[case_id]), strict=True):
             row[f"{prefix}_reviewer"] = review.reviewer
@@ -542,6 +555,11 @@ def _same_judgments(x: Review, y: Review) -> bool:
     return (x.concept_same, x.scope_same) == (y.concept_same, y.scope_same)
 
 
+def _same_details(x: Review, y: Review) -> bool:
+    """Same primary reason and the same set of evidence spans."""
+    return (x.reasons[:1] == y.reasons[:1]) and set(x.evidence_refs) == set(y.evidence_refs)
+
+
 def finalize(
     candidates: Iterable[CandidatePair],
     review_sets: list[list[Review]],
@@ -550,7 +568,8 @@ def finalize(
     """Turn reviews into evaluation cases.
 
     A resolution wins. Otherwise reviewers must agree on both judgments (the first reviewer's
-    reasons, evidence and rationale are kept; the second is recorded as ``reviewed_by``).
+    reasons, evidence and rationale are kept once both reviewers agree on them; the second is
+    recorded as ``reviewed_by``).
     Unreviewed candidates are skipped and reported; unresolved disagreements are problems.
     The result is checked for split leakage.
     """
@@ -573,6 +592,10 @@ def finalize(
                 continue
             if any(not _same_judgments(rs[0], r) for r in rs[1:]):
                 problems.append(f"{c.case_id}: reviewers disagree and no resolution was provided")
+                continue
+            if any(not _same_details(rs[0], r) for r in rs[1:]):
+                problems.append(f"{c.case_id}: reviewers agree on the judgments but differ on the "
+                                "primary reason or evidence spans, and no resolution was provided")
                 continue
             final = rs[0]
         if final.reviewer == RESOLVER:

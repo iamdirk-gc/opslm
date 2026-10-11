@@ -49,7 +49,7 @@ This table is implemented in `derive_label`. If you disagree with it for a case,
 ### 2. Same scope
 
 - **Entity:** the same entity, or explicitly the same consolidation basis. A subsidiary vs its parent is a different scope.
-- **Period:** the same period. For point-in-time metrics (cash, ARR) the period is the as-of date, and different as-of dates (year end vs quarter end vs a deck date) are different periods. Labels like "FY2025" are the same only if the dates match or the periods are plainly the same. A fiscal year ending June and a calendar year are different periods. Quarter vs full year is different. LTM vs fiscal year is different.
+- **Period:** the same period. For point-in-time metrics (ARR) the period is the as-of date, and different as-of dates (year end vs quarter end vs a deck date) are different periods. Labels like "FY2025" are the same only if the dates match or the periods are plainly the same. A fiscal year ending June and a calendar year are different periods. Quarter vs full year is different. LTM vs fiscal year is different.
 - **Cannot tell** if the entity or period is missing on either fact and its evidence text does not state it.
 
 ### 3. Values agree

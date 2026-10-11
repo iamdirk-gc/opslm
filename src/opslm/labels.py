@@ -56,6 +56,15 @@ def derive_label(
     return Relationship.EQUIVALENT if values_agree else Relationship.CONFLICTING
 
 
+def _sign_style(q: Quantity) -> str:
+    """How a number's sign was presented: '(5.2)', '-5.2', or no mark at all (the label, such as
+    'Net loss', carries the sign)."""
+    if q.value >= 0:
+        return "positive"
+    raw = q.raw_text.strip()
+    return "paren" if raw.startswith("(") else "minus" if raw[:1] in "-\u2212" else "label"
+
+
 def infer_reasons(
     a: BusinessFact,
     b: BusinessFact,
@@ -98,6 +107,8 @@ def infer_reasons(
         reasons.append(ReasonCode.VALUE_MISMATCH)
         if qa.reported_value == qb.reported_value and qa.reported_scale != qb.reported_scale:
             reasons.append(ReasonCode.UNIT_SCALE)
+        if qa.value == -qb.value:  # same magnitude, opposite sign: a sign was lost or flipped
+            reasons.append(ReasonCode.SIGN_CONVENTION)
     else:
         same_label = a.metric_label.casefold() == b.metric_label.casefold()
         reasons.append(ReasonCode.EXACT_MATCH if same_label else ReasonCode.SYNONYM)
@@ -105,4 +116,6 @@ def infer_reasons(
             reasons.append(ReasonCode.ROUNDING)
         if qa.reported_scale != qb.reported_scale:
             reasons.append(ReasonCode.UNIT_SCALE)
+        if qa.value < 0 and qb.value < 0 and _sign_style(qa) != _sign_style(qb):
+            reasons.insert(0, ReasonCode.SIGN_CONVENTION)  # a loss shown two different ways
     return reasons or [ReasonCode.UNSUPPORTED_CLAIM]

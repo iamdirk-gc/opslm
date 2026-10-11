@@ -1,8 +1,11 @@
 """Worked examples and checks for the v0.2.0 schema."""
 
 import json
+import os
+import re
 from pathlib import Path
 
+import pydantic
 import pytest
 from pydantic import ValidationError
 
@@ -13,6 +16,7 @@ from opslm.schema import (
     EvalCase,
     GoldLabel,
     Period,
+    Quantity,
     ReconciliationInput,
     ReconciliationOutput,
     Relationship,
@@ -227,8 +231,8 @@ def test_label_must_follow_judgments():
     with pytest.raises(ValidationError, match="contradicts the judgments"):
         case("c1", a, b, "equivalent")
     with pytest.raises(ValidationError, match="contradicts the judgments"):
-        case("c1", a, b, "conflicting", concept=False)
-    assert case("c1", a, b, "conflicting").gold.relationship == "conflicting"
+        case("c1", a, b, "conflicting", concept=False, reasons=("value_mismatch",))
+    assert case("c1", a, b, "conflicting", reasons=("value_mismatch",)).gold.relationship == "conflicting"
     assert case("c1", a, fact("b"), "equivalent").gold.relationship == "equivalent"
 
 
@@ -262,8 +266,105 @@ def test_example_case_file_is_valid():
     assert out.relationship == "conflicting" and out.selected_fact_id == "f1"
 
 
+def _recorded_pydantic_version() -> str:
+    return Path("schemas/pydantic_version.txt").read_text().strip()
+
+
 @pytest.mark.parametrize("name", list(MODELS))
 def test_checked_in_json_schemas_are_current(name):
+    if pydantic.VERSION != _recorded_pydantic_version():
+        msg = (f"schemas were generated with pydantic {_recorded_pydantic_version()}; installed "
+               f"{pydantic.VERSION}. CI's 'schemas' job checks them at the recorded version.")
+        if os.environ.get("OPSLM_REQUIRE_SCHEMA_CHECK"):
+            pytest.fail(msg)  # that job must really run the comparison, never skip it
+        pytest.skip(msg)
     path = Path("schemas") / f"{name}.schema.json"
     assert path.read_text() == render(json_schemas()[name]), (
         f"{path} is stale; run: python -m opslm.export_schemas")
+
+
+def test_pydantic_version_file_is_a_real_version():
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _recorded_pydantic_version())
+
+
+# --- Quantity validation ---------------------------------------------------------------------
+
+
+def _q(**kw):
+    base = {"value": "42500000", "unit": "currency", "currency": "USD",
+            "reported_scale": "1000000", "raw_text": "$42.5M"}
+    return Quantity(**{**base, **kw})
+
+
+@pytest.mark.parametrize("scale", ["0", "-1000000"])
+def test_reported_scale_must_be_positive(scale):
+    with pytest.raises(ValidationError):
+        _q(reported_scale=scale)
+
+
+def test_currency_is_normalized_and_must_be_iso_shaped():
+    assert _q(currency=" usd ").currency == "USD"
+    for bad in ("DOLLARS", "US", "U$D", "1AB"):
+        with pytest.raises(ValidationError):
+            _q(currency=bad)
+
+
+def test_currency_only_on_currency_quantities():
+    with pytest.raises(ValidationError, match="Only currency quantities"):
+        _q(unit="percent", currency="USD")
+    assert _q(unit="percent", currency=None, reported_scale="1").currency is None
+
+
+def test_values_agree_works_for_every_valid_scale():
+    from opslm.labels import values_agree
+
+    assert values_agree(_q(), _q(reported_scale="1000", raw_text="42,500")) is True
+
+
+# --- reasons must fit the relationship ----------------------------------------------------------
+
+from tests.factories import gold
+
+
+@pytest.mark.parametrize(
+    "relationship,reasons",
+    [
+        ("conflicting", ("exact_match", "synonym")),
+        ("equivalent", ("value_mismatch",)),
+        ("related_but_different", ("synonym",)),
+        ("insufficient_evidence", ("value_mismatch",)),
+        ("conflicting", ("value_mismatch", "period_mismatch")),
+    ],
+)
+def test_reasons_that_contradict_the_relationship_are_rejected(relationship, reasons):
+    concept, scope = {"equivalent": (True, True), "conflicting": (True, True),
+                      "related_but_different": (False, True),
+                      "insufficient_evidence": (None, True)}[relationship]
+    with pytest.raises(ValidationError, match="reason"):
+        gold("c1", relationship, concept, scope, reasons=reasons)
+
+
+@pytest.mark.parametrize(
+    "relationship,reasons",
+    [
+        ("equivalent", ("synonym", "rounding", "unit_scale")),
+        ("conflicting", ("value_mismatch", "unit_scale")),
+        ("conflicting", ("restatement", "value_mismatch")),
+        ("conflicting", ("value_mismatch", "synonym")),
+        ("related_but_different", ("definition_mismatch", "percent_vs_amount")),
+        ("insufficient_evidence", ("missing_definition",)),
+    ],
+)
+def test_sensible_reason_lists_are_accepted(relationship, reasons):
+    concept, scope = {"equivalent": (True, True), "conflicting": (True, True),
+                      "related_but_different": (False, True),
+                      "insufficient_evidence": (None, True)}[relationship]
+    assert gold("c1", relationship, concept, scope, reasons=reasons).reasons == list(reasons)
+
+
+def test_reasons_problem_message_names_the_valid_choices():
+    from opslm.schema import reasons_problem
+
+    msg = reasons_problem("conflicting", ["synonym"])
+    assert "value_mismatch" in msg and "restatement" in msg
+    assert reasons_problem("equivalent", []) == "at least one reason is required"

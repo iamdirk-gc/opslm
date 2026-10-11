@@ -11,8 +11,8 @@ evaluated independently:
 
 An ``EvalCase`` (one line of a dataset file) is an input with its gold label.
 
-v1 scope: pairwise comparison of two facts for the metrics on the
-"Metric Definitions" tab. Clustering of 3+ facts is built on top of pairs later.
+v1 scope: pairwise comparison of two facts for the metrics in
+docs/metric-set-v1.md (mirrored on the project wiki). Clustering of 3+ facts is built on top of pairs later.
 
 Primary benchmark task: classify the relationship between two facts.
 Canonical resolution (picking a value) is optional and scored separately; a
@@ -26,11 +26,13 @@ does not follow from them.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "0.2.0"
 
@@ -141,6 +143,41 @@ class ReasonCode(str, Enum):
     UNSUPPORTED_CLAIM = "unsupported_claim"
 
 
+# Which reasons can be the primary reason for each relationship. Secondary reasons may also come
+# from DESCRIPTIVE_REASONS, which describe how the facts were named or how their numbers were
+# shown, whatever the relationship (for example a conflict between two synonymous labels).
+PRIMARY_REASONS: dict[str, frozenset[str]] = {
+    "equivalent": frozenset({"exact_match", "synonym", "rounding", "unit_scale", "sign_convention"}),
+    "conflicting": frozenset({"value_mismatch", "restatement"}),
+    "related_but_different": frozenset({
+        "definition_mismatch", "basis_mismatch", "percent_vs_amount", "period_mismatch",
+        "as_of_mismatch", "entity_mismatch"}),
+    "insufficient_evidence": frozenset({
+        "missing_definition", "missing_period", "missing_entity", "currency_mismatch",
+        "percent_vs_amount", "unsupported_claim"}),
+}
+DESCRIPTIVE_REASONS = frozenset({"synonym", "unit_scale", "rounding", "sign_convention"})
+
+
+def _value(x: object) -> str:
+    return str(getattr(x, "value", x))
+
+
+def reasons_problem(relationship: object, reasons: Iterable[object]) -> str | None:
+    """Why a reason list does not fit a relationship, or None if it does. Primary reason first."""
+    rel, codes = _value(relationship), [_value(r) for r in reasons]
+    if not codes:
+        return "at least one reason is required"
+    primary_ok = PRIMARY_REASONS[rel]
+    if codes[0] not in primary_ok:
+        return (f"primary reason '{codes[0]}' does not fit relationship '{rel}'; "
+                f"use one of: {', '.join(sorted(primary_ok))}")
+    extra = [c for c in codes[1:] if c not in primary_ok | DESCRIPTIVE_REASONS]
+    if extra:
+        return f"reasons {extra} do not fit relationship '{rel}'"
+    return None
+
+
 class Split(str, Enum):
     TRAIN = "train"
     VALIDATION = "validation"
@@ -246,13 +283,25 @@ class Quantity(_Model):
     unit: UnitType
     currency: str | None = Field(default=None, description="ISO 4217, required for CURRENCY.")
     reported_scale: Decimal = Field(
-        default=Decimal(1), description="Scale as shown in the source: 1e6 for '$ in millions'.")
+        default=Decimal(1), gt=0,
+        description="Scale as shown in the source: 1e6 for '$ in millions'. Must be positive.")
     raw_text: str = Field(description="Value exactly as printed, e.g. '(5.2)' or '$42.5M'.")
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, v):
+        return v.strip().upper() if isinstance(v, str) else v
 
     @model_validator(mode="after")
     def _currency(self):
-        if self.unit == UnitType.CURRENCY.value and not self.currency:
+        is_currency = self.unit == UnitType.CURRENCY.value
+        if is_currency and not self.currency:
             raise ValueError("Currency quantities need an ISO currency code.")
+        if self.currency is not None:
+            if not re.fullmatch(r"[A-Z]{3}", self.currency):
+                raise ValueError(f"currency must be a three-letter ISO 4217 code, got {self.currency!r}")
+            if not is_currency:
+                raise ValueError("Only currency quantities may have a currency code.")
         return self
 
     @property
@@ -463,6 +512,13 @@ class GoldLabel(_Model):
     adjudication_note: str | None = Field(
         default=None, description="Set when labelers disagreed; records the decision and why.")
     guideline_version: str
+
+    @model_validator(mode="after")
+    def _reasons_fit_relationship(self):
+        problem = reasons_problem(self.relationship, self.reasons)
+        if problem:
+            raise ValueError(problem)
+        return self
 
 
 CONSTRUCTION_LABELER = "generator"

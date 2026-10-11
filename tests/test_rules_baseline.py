@@ -117,9 +117,11 @@ def test_fiscal_year_matches_a_differently_worded_label():
 def test_as_of_dates_compare_for_point_in_time_metrics():
     ye = Period(type="instant", label="as of Dec 31, 2025", as_of=date(2025, 12, 31))
     q3 = Period(type="instant", label="Sep 30, 2025", as_of=date(2025, 9, 30))
-    p = predict(fact("f", "ARR", period=ye), fact("g", "ARR", period=q3))
+    defn = "Annualized value of active recurring subscription contracts at period end."
+    p = predict(fact("f", "ARR", period=ye, definition=defn), fact("g", "ARR", period=q3, definition=defn))
     assert p.scope_same is False and p.reasons == ["as_of_mismatch"]
-    assert predict(fact("f", "ARR", period=ye), fact("g", "ARR", period=ye)).scope_same is True
+    same = predict(fact("f", "ARR", period=ye, definition=defn), fact("g", "ARR", period=ye, definition=defn))
+    assert same.scope_same is True and same.relationship == "equivalent"
 
 
 def test_flow_and_point_in_time_periods_differ():
@@ -137,3 +139,42 @@ def test_output_cites_both_facts_and_records_run():
 def test_normalizers():
     assert normalize_entity("Acme, Inc.") == "acme"
     assert normalize_period_label("FY 2025") == normalize_period_label("Fiscal Year 2025")
+
+
+# --- company-defined metrics need stated, matching definitions -------------------------------
+
+
+def test_company_defined_metric_without_definitions_is_insufficient_evidence():
+    p = predict(fact("f", "ARR", metric_id="arr"), fact("g", "Annual recurring revenue", metric_id="arr"))
+    assert p.concept_same is None and p.relationship == "insufficient_evidence"
+    assert p.reasons == ["missing_definition"]
+
+
+def test_company_defined_metric_with_one_definition_is_insufficient_evidence():
+    p = predict(fact("f", "Adjusted EBITDA", definition="Excludes stock compensation."),
+                fact("g", "Adj. EBITDA"))
+    assert p.concept_same is None
+
+
+def test_company_defined_metric_with_the_same_definition_is_comparable():
+    d = "Net income before interest, taxes, depreciation and amortization, excluding stock compensation."
+    same = predict(fact("f", "Adjusted EBITDA", definition=d), fact("g", "Adj. EBITDA", definition=d))
+    assert same.concept_same is True and same.relationship == "equivalent"
+    other = predict(fact("f", "Adjusted EBITDA", definition=d),
+                    fact("g", "Adj. EBITDA", "50", definition=d))
+    assert other.relationship == "conflicting"
+
+
+def test_different_definition_text_is_not_judged_by_a_baseline_that_cannot_read():
+    p = predict(fact("f", "Adjusted EBITDA", definition="Excludes stock compensation."),
+                fact("g", "Adj. EBITDA", definition="Excludes stock compensation and restructuring."))
+    assert p.concept_same is None
+
+
+@pytest.mark.parametrize("variant", ["Net loss", "Net income (loss)", "Profit for the period",
+                                     "GM", "Gross profit margin", "Annualized recurring revenue",
+                                     "EBITDA (adjusted)", "Non-GAAP EBITDA"])
+def test_variants_from_the_metric_page_are_recognised(variant):
+    rules = RulesBaseline()
+    core, _ = rules._parse_metric(fact("f", variant))
+    assert core in {"net_income", "gross_margin", "arr", "adjusted_ebitda"}

@@ -107,3 +107,46 @@ def test_dataset_hash_is_order_independent_and_content_sensitive():
     a, b = case(1), case(2)
     assert dataset_hash([a, b]) == dataset_hash([b, a])
     assert dataset_hash([a, b]) != dataset_hash([a, case(2, a=fact("a2", value="99"))])
+
+
+# --- company-level separation ---------------------------------------------------------------
+
+
+def _company_case(case_id, company, family, split, value="42.5"):
+    from opslm.schema import SourceDocument
+    from tests.factories import case, fact
+
+    c = case(case_id, fact(f"a-{case_id}", value=value), fact(f"b-{case_id}", "Total revenue", value),
+             "equivalent",
+             family=family, split=split)
+    docs = [SourceDocument(doc_id=d.doc_id, company=company, document_family=family, doc_type="10-K")
+            for d in c.input.documents]
+    return c.model_copy(update={"input": c.input.model_copy(update={"documents": docs})})
+
+
+def test_company_may_not_span_splits_even_across_document_families():
+    from opslm.data import validate_cases
+
+    train = _company_case("c1", "Acme Corp", "acme-fy2024", "train")
+    test = _company_case("c2", "Acme Corp", "acme-fy2025", "test")
+    problems = validate_cases([train, test])
+    assert any("company 'Acme Corp' spans multiple splits" in p for p in problems)
+    assert not any("document family" in p for p in problems)  # the families differ
+
+
+def test_company_names_are_compared_without_case_punctuation_or_legal_suffix():
+    from opslm.data import company_key, validate_cases
+
+    assert company_key("ACME, Inc.") == company_key("Acme Corporation") == "acme"
+    assert company_key("Acme & Sons Ltd") == "acme and sons"
+    train = _company_case("c1", "Acme Corp.", "f1", "train")
+    test = _company_case("c2", "ACME, Inc.", "f2", "test")
+    assert any("spans multiple splits" in p for p in validate_cases([train, test]))
+
+
+def test_different_companies_in_different_splits_are_fine():
+    from opslm.data import validate_cases
+
+    train = _company_case("c1", "Acme Corp", "f1", "train")
+    test = _company_case("c2", "Globex Corp", "f2", "validation", value="50")
+    assert validate_cases([train, test]) == []

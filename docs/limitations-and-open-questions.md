@@ -32,7 +32,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
    - *Default:* four labels; explanations are captured only in the reason codes (`reasons`, for example `restatement` or `basis_mismatch`).
 2. **Restatements.** If one source restates another, is that `conflicting` or something else?
    - *Default:* `conflicting` with reason `restatement`.
-3. **Naming variants (answered by the board's Metric Definitions, adopted in guidelines v1.1).** Revenue, Total revenue, Net sales, Sales and Turnover are equivalent when definition, entity and period match, so the plan's $42.5M vs $44.1M example is `conflicting`. "Net revenue" is conditional (equivalent only when the company reports no separate gross revenue line). Note the original plan document lists Revenue vs Net Revenue as equivalent; the board supersedes it. Please confirm.
+3. **Naming variants (answered by the metric set, `docs/metric-set-v1.md`, adopted in guidelines v1.1).** Revenue, Total revenue, Net sales, Sales and Turnover are equivalent when definition, entity and period match, so the plan's $42.5M vs $44.1M example is `conflicting`. "Net revenue" is conditional (equivalent only when the company reports no separate gross revenue line). Note the original plan document lists Revenue vs Net Revenue as equivalent; the board supersedes it. Please confirm.
 4. **When do two numbers "agree"?** Currently: they differ by no more than the rounding implied by the coarser reported precision (42.5M agrees with 42.54M, not 42.7M). An alternative is a fixed percentage tolerance (for example 0.5%) that an analyst would accept.
    - *Default:* precision-based rounding.
 5. **Different currencies.** No conversion is attempted, so the label is `insufficient_evidence`. Is that the intended behavior, or should currency differences be a distinct case?
@@ -67,7 +67,10 @@ Each item has what the engineering side did by default. Defaults can be changed;
 
 ### Rules baseline
 - Cannot read definitions or footnotes, so it misses differences stated only in text.
-- Synonym table is small (about 20 concepts) and hand-written. Unlisted metrics become "cannot tell", so it over-predicts `insufficient_evidence` on real data.
+- The synonym table covers every naming variant on `docs/metric-set-v1.md` (a test checks) plus about 15 general concepts, and is hand-written. Other metrics become "cannot tell", so it over-predicts `insufficient_evidence` on real data.
+- Company-defined metrics (ARR, Adjusted EBITDA, FCF) count as the same concept only when both facts state identical definition text; any other wording difference makes it abstain, because it cannot compare meanings.
+- It cites every span of both facts (it cannot choose), so its evidence recall is a ceiling and its precision a floor.
+- On generated data it scores about 85%, because it knows every name; it scores near 0% on cases that need a definition read.
 - Fiscal vs calendar periods with no dates may be judged the same.
 - Its 100% score on the nine examples is by construction: the rules and examples were written together.
 
@@ -75,6 +78,8 @@ Each item has what the engineering side did by default. Defaults can be changed;
 - **Never run for real.** No model credentials were available while building it, so everything is tested against mocks. The OpenAI-compatible and Vertex Gemini parameter names were checked against the installed SDKs' signatures, not against live services. Expect a first real run per provider to surface small problems.
 - **Structured output varies by provider.** Anthropic, vLLM and recent Ollama can constrain output to the JSON schema. Servers or models without that fall back to JSON mode or plain text with the schema in the prompt (`--structured`), which is less reliable and will raise the error count. Error counts should be reported alongside accuracy when comparing systems.
 - **Non-deterministic or not controllable.** Current Claude models reject temperature and seed settings. The other backends default to temperature 0, which reduces but does not eliminate variation. Report several runs before claiming small differences.
+- **The model chooses its evidence spans.** Each span is shown with its id, and the answer schema limits citations to the case's own ids where the backend supports constrained decoding. With weaker modes it can cite ids that do not exist; the harness counts those as invalid references. Citing nothing is an error unless the answer is insufficient evidence.
+- **`metric_id` is hidden from the model by default** (`--show-metric-id` shows it). It predicts the label, the rules baseline does not use it, and a model that leans on it would not transfer to real extractor output. Run with and without before drawing conclusions about it.
 - **Numeric values are hidden from the model by default.** This follows the guidelines (concept never depends on the numbers) and lets code do the arithmetic. The tradeoff: if an excerpt or definition only makes sense with the number, the model cannot use it. `--show-values` exists to test this.
 - **No silent model fallback.** No provider-side fallback is enabled, since it would change which model answered mid-benchmark. A refusal or content-filter block is recorded as an error and scored wrong. If these turn out to be common on financial text, this needs a decision.
 - **One prompt for every model.** The prompt is a condensed copy of the guidelines plus five abbreviated examples, not tuned per model. Smaller open models may need different wording or few-shot examples, and a single shared prompt may understate them. The prompt must be updated by hand when the guidelines change (its hash is recorded with each run). Keep benchmark cases distinct from the prompt's examples.
@@ -83,19 +88,20 @@ Each item has what the engineering side did by default. Defaults can be changed;
 
 ### Schema
 - Each fact holds one numeric value. Ranges, "approximately", multi-value cells and non-numeric facts are not represented.
-- Currency and unit are free strings compared case-insensitively, with no unit ontology.
+- Units are an enum (currency, percent, ratio, count) with no finer ontology. Currency is normalized and must be a three-letter code, but is not checked against the ISO 4217 list.
 - Precision comes from the decimal places as typed. A source reported as "42.5" (rounded) and one reported as "42.50" are treated as differently precise.
 - English-language documents only.
 
 ### Dataset loader
 - Fact- and pair-level leakage checks compare exact content. Near-duplicates (a fact reworded or a value shifted by one digit) are not detected.
 - It is strict by design, so a dataset with any leakage will not load through `load_dataset`.
+- Companies are compared by name after dropping case, punctuation and legal suffix. Two spellings of one company that differ in more than that (a rebrand, an abbreviation) are not merged, so company-level leakage across them would go unnoticed.
 
 ### Evaluation harness
 - **Confidence intervals resample individual cases.** Cases from the same scenario are correlated, so intervals are somewhat too narrow. Resampling by scenario would be more honest.
 - The paired significance test (McNemar) assumes cases are independent, which has the same issue.
 - With 100-200 cases and four classes, expect differences of under about 8-10 points to be indistinguishable from noise.
-- Evidence scoring compares field names only (`period`, `metric`), not whether the system pointed at the right fact or quoted the right text.
+- Evidence is scored at the span level: recall and precision of the cited spans against the spans the gold label requires. Synthetic gold requires both facts' spans, so on synthetic data this mostly tests whether a system cites sensibly at all; it becomes informative with human-marked spans on real documents.
 - Concept and scope accuracy treat "cannot tell" as an answer that must match the gold judgment.
 - Macro-F1 averages only over classes present in the gold labels.
 - Latency is wall-clock on whatever machine runs it. Cost covers API spend only, not local compute time. Neither is comparable across machines without recording the hardware.

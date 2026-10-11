@@ -21,9 +21,9 @@ Fifteen scenario templates cover the cases on the project board:
 | `value_conflict`, `restatement` | Conflicting: same concept, entity and period, different values (restatements carry an excerpt saying so) |
 | `scale_error`, `currency_mismatch` | Conflicting (scale) and insufficient evidence (currency, no conversion) |
 | `marker_diff` | Related: Adjusted/Non-GAAP/Pro forma/Gross qualifiers, EBITDA vs Adjusted EBITDA |
-| `defined_diff` | Related: different measures with stated definitions (revenue vs ARR, gross margin vs gross profit, cash vs restricted cash, and others from the board) |
-| `company_defined` | ARR, Adjusted EBITDA and FCF: equivalent or conflicting when definitions match, related when they differ, insufficient evidence when a definition is missing |
-| `period_mismatch` | Related: FY vs quarter, FY vs prior FY, LTM vs FY, calendar vs fiscal year, different as-of dates |
+| `defined_diff` | Related: different measures with stated definitions (revenue vs ARR, gross margin vs gross profit, EBITDA vs Adjusted EBITDA, and others from the board) |
+| `company_defined` | ARR and Adjusted EBITDA: equivalent or conflicting when definitions match, related when they differ, insufficient evidence when a definition is missing |
+| `period_mismatch` | Related: FY vs quarter, FY vs prior FY, LTM vs FY, calendar vs fiscal year |
 | `entity_mismatch` | Related: parent vs subsidiary vs segment |
 | `missing_entity`, `missing_period` | Insufficient evidence; the excerpt never states the missing field |
 | `ambiguous_name`, `ambiguous_resolved` | "Net revenue", "Core revenue" without a definition (insufficient) and with a resolving definition |

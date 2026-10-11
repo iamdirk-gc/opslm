@@ -368,7 +368,7 @@ def sc_defined_diff(ctx: Ctx) -> tuple[str, list[PairSpec]]:
 
 
 def sc_company_defined(ctx: Ctx) -> tuple[str, list[PairSpec]]:
-    """ARR, Adjusted EBITDA and free cash flow mean what each company says they mean."""
+    """ARR and Adjusted EBITDA mean what each company says they mean."""
     c = V.CONCEPTS[ctx.rng.choice(V.COMPANY_DEFINED)]
     groups = V.DEFINITION_GROUPS[c.key]
     names = ctx.names(c, 2)

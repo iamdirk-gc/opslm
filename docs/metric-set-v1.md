@@ -2,7 +2,7 @@
 
 Definitions, variants and concepts not to merge.
 
-Five core metrics and two optional. ARR is core but only expected at subscription businesses, so it isn't required for every company in the document set. Drop free cash flow first, then cash, if the set needs to shrink.
+Four core metrics and one optional. ARR is optional because it is only expected at subscription businesses, so it isn't required for every company in the document set. Free cash flow and cash and cash equivalents were dropped from v1.
 
 Naming variants are treated as equivalent if definition, entity and period match.
 
@@ -11,12 +11,10 @@ Naming variants are treated as equivalent if definition, entity and period match
 | Metric | Priority | Period type | Typical units |
 |---|---|---|---|
 | [Revenue](#revenue) | Core | Flow (fiscal year or quarter) | Currency (thousands or millions) |
-| [ARR](#arr) | Core | Point in time (as of period end) | Currency (millions) |
+| [ARR](#arr) | Optional | Point in time (as of period end) | Currency (millions) |
 | [Gross margin](#gross-margin) | Core | Flow (fiscal year or quarter) | Percent |
 | [Adjusted EBITDA](#adjusted-ebitda) | Core | Flow (fiscal year or quarter) | Currency, or percent for margin |
 | [Net income](#net-income) | Core | Flow (fiscal year or quarter) | Currency |
-| [Free cash flow](#free-cash-flow) | Optional | Flow (fiscal year or quarter) | Currency, or percent for margin |
-| [Cash and cash equivalents](#cash-and-cash-equivalents) | Optional | Point in time (balance sheet date) | Currency |
 
 ## Revenue
 
@@ -38,7 +36,7 @@ Naming variants are treated as equivalent if definition, entity and period match
 - **Typical units:** Currency (millions)
 - **Reconciliation traps:** Company-specific definition; point in time vs. period flow; whether usage-based or professional services revenue is included; definition changes between years
 - **Example label cases:** Related: ARR vs. FY revenue. Insufficient evidence: deck states ARR without definition or as-of date.
-- **Priority:** Core
+- **Priority:** Optional
 
 ## Gross margin
 
@@ -72,25 +70,3 @@ Naming variants are treated as equivalent if definition, entity and period match
 - **Reconciliation traps:** Entity boundary (attributable to parent vs. consolidated incl. NCI); sign conventions (-5.2 vs. (5.2) vs. "net loss of 5.2"); continuing vs. discontinued operations
 - **Example label cases:** Equivalent: "Net loss of $5.2M" vs. "Net income (loss): (5.2)". Related: attributable to parent vs. including NCI.
 - **Priority:** Core
-
-## Free cash flow
-
-- **Canonical definition:** Operating cash flow minus capital expenditures, as defined by the company.
-- **Naming variants:** FCF; Free cash flow
-- **Related but different (never merge):** Operating cash flow; Unlevered FCF; Adjusted FCF; FCF margin (percent)
-- **Period type:** Flow (fiscal year or quarter)
-- **Typical units:** Currency, or percent for margin
-- **Reconciliation traps:** Company-specific: whether capitalized software or finance-lease payments are subtracted; levered vs. unlevered; dollars vs. margin percent
-- **Example label cases:** Related: FCF vs. operating cash flow. Insufficient evidence: FCF stated without a definition.
-- **Priority:** Optional
-
-## Cash and cash equivalents
-
-- **Canonical definition:** Cash on hand and highly liquid investments with original maturities of three months or less, as of the balance sheet date.
-- **Naming variants:** Cash and cash equivalents; Cash; Cash & equivalents
-- **Related but different (never merge):** Cash, cash equivalents and short-term investments; Total liquidity (incl. revolver); Restricted cash; Net cash (cash minus debt)
-- **Period type:** Point in time (balance sheet date)
-- **Typical units:** Currency
-- **Reconciliation traps:** As-of date mismatches (quarter end vs. year end vs. deck date); scope (with or without short-term investments or restricted cash)
-- **Example label cases:** Related: cash vs. cash + short-term investments. Conflicting: same as-of date and scope, different value.
-- **Priority:** Optional

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
+from collections.abc import Iterable
 
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 SYSTEM_PROMPT = """\
 You reconcile two business facts extracted from documents. Using only the fields shown, \
 make two judgments. Numeric values are deliberately not shown (unless they appear in the \
 evidence text); do not guess at them. Your answer is combined with a separate numeric \
-comparison, so do not try to decide whether the numbers match.
+comparison, so do not try to decide whether the numbers match. If a metric_id is shown it \
+is a hint from an upstream mapping and can be wrong; the metric label, definition and \
+evidence are what count.
 
 1. concept_same: would a careful analyst substitute one metric for the other in a model \
 without changing its meaning, given the definitions and accounting basis shown?
@@ -46,6 +50,10 @@ made from the fields shown, not to avoid a hard but answerable case.
 - deciding_fields lists the fact fields that determine any judgment that is not "yes" \
 (choose from metric, basis, definition, entity, period). Use an empty list when both \
 judgments are "yes".
+- evidence_refs lists the ids of the evidence spans your answer relies on: the spans that \
+state the metric name or definition, the entity and the period you used. Each fact's \
+evidence and any context spans are shown with their ids. Cite only ids that appear in the \
+input, and always cite at least one.
 - Put a one or two sentence rationale first.
 
 Examples (facts abbreviated):
@@ -75,9 +83,21 @@ JUDGMENT_SCHEMA: dict = {
                 "enum": ["metric", "basis", "definition", "entity", "period"],
             },
         },
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["rationale", "concept_same", "scope_same", "deciding_fields"],
+    "required": ["rationale", "concept_same", "scope_same", "deciding_fields", "evidence_refs"],
     "additionalProperties": False,
 }
+
+
+def judgment_schema(span_ids: Iterable[str] | None = None) -> dict:
+    """The answer schema, with ``evidence_refs`` limited to the case's own span ids when given
+    (backends with constrained decoding then cannot cite a span that does not exist)."""
+    schema = copy.deepcopy(JUDGMENT_SCHEMA)
+    ids = sorted(set(span_ids)) if span_ids is not None else None
+    if ids:
+        schema["properties"]["evidence_refs"]["items"] = {"type": "string", "enum": ids}
+    return schema
+
 
 PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()

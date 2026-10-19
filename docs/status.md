@@ -33,7 +33,7 @@ owner are in [decisions.md](decisions.md).
 | Systems | Rules baseline (covers every metric-page variant; abstains on company-defined metrics without definitions); provider-agnostic LLM system (Anthropic, OpenAI-compatible, Vertex Gemini), never run against a real model |
 | Evaluation harness | Reconciliation-only mode: macro-F1, false-match rate, judgment accuracy, span-level evidence, cost and latency, slices, bootstrap intervals, paired test. Not built: end-to-end mode with extraction, difficulty slices |
 | Synthetic generator (v1, built before the requirements page) | 18 scenario templates over the five v1 metrics, labels checked against the guideline table at build time, held-out vocabulary tagged `heldout_name`. **Does not yet meet the requirements page; gaps below** |
-| Pair miner | **In review (PR #9).** Blocks by company and metric family, samples by stratum, assigns splits by company; checked against synthetic gold labels, never run on real facts |
+| Pair miner | **In review ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)).** Blocks by company and metric family, samples by stratum, assigns splits by company; checked against synthetic gold labels, never run on real facts |
 | CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 356 tests |
 
 ## Where the board stands
@@ -56,7 +56,7 @@ to the owner's review where noted.
 | 2.4 | Not started | Needs D-02 |
 | M2 | Not started | Blocked on 2.1 to 2.3 |
 | 3.1 | In progress | Generator v1 exists but does not meet the requirements page (next section); blocked on the coverage grid (D-29) |
-| 3.2 | In progress | Tool built, in review as PR #9; waits on extraction output. Still to change: it assigns splits by hash, but the roles are fixed (holdout companies to the test split only) |
+| 3.2 | In progress | Tool built, in review as [PR #9](https://github.com/iamdirk-gc/opslm/pull/9); waits on extraction output. Still to change: it assigns splits by hash, but the roles are fixed (holdout companies to the test split only) |
 | 3.3 | In progress | Company and document-family separation enforced in code; the rule is not yet written up for real data |
 | 3.4 | Not started | Workflow ready; waits on candidates from real facts |
 | 3.5 | Not started | The generator can produce it; run after M1 so it follows the frozen guidelines |
@@ -128,4 +128,4 @@ waiting on), and a review of guidelines v1.1. The full list is in
 
 ## In review now
 
-PR #9, the pair-mining tool. Merge it directly into `main`.
+[PR #9](https://github.com/iamdirk-gc/opslm/pull/9), the pair-mining tool. Merge it directly into `main`.

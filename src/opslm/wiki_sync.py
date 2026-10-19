@@ -36,7 +36,7 @@ HOME_ENTRIES: dict[str, str] = {
     "Decisions-for-the-Project-Owner": "[[Decisions for the Project Owner]]: the open questions that need the owner's call",
 }
 
-_LINK = re.compile(r"(\[[^\]]*\]\()([^)\s]+)(\))")
+_LINK = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
 _FENCE = re.compile(r"(```.*?```)", re.DOTALL)
 
 
@@ -55,10 +55,17 @@ def _rewrite_target(target: str, source: str, pages: dict[str, str]) -> str:
 def rewrite_links(text: str, source: str, pages: dict[str, str] | None = None) -> str:
     """Make a doc's relative links work from the wiki. Code blocks are left alone."""
     pages = PAGES if pages is None else pages
+    def fix(m: re.Match[str]) -> str:
+        label, target = m.group(1), m.group(2)
+        new_target = _rewrite_target(target, source, pages)
+        page = new_target.split("#")[0]
+        if page in pages.values() and label.endswith(".md"):
+            label = page.replace("-", " ")  # a link to a mirrored page shows its title
+        return f"[{label}]({new_target})"
+
     parts = _FENCE.split(text)
     for i in range(0, len(parts), 2):  # odd parts are fenced code
-        parts[i] = _LINK.sub(
-            lambda m: f"{m.group(1)}{_rewrite_target(m.group(2), source, pages)}{m.group(3)}", parts[i])
+        parts[i] = _LINK.sub(fix, parts[i])
     return "".join(parts)
 
 

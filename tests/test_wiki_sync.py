@@ -64,3 +64,15 @@ def test_sync_writes_pages_and_reports_only_real_changes(tmp_path):
 
     (repo / "docs/decisions.md").write_text("# Decisions for the Project Owner\n\nChanged.\n")
     assert W.sync(repo, wiki, TODAY) == ["Decisions-for-the-Project-Owner.md"]
+
+
+def test_a_file_name_label_on_a_mirrored_page_becomes_the_page_title():
+    out = W.rewrite_links("See [decisions.md](decisions.md#a) and [the log](decisions.md).",
+                          "docs/status.md", PAGES)
+    assert "[Decisions for the Project Owner](Decisions-for-the-Project-Owner#a)" in out
+    assert "[the log](Decisions-for-the-Project-Owner)" in out  # a human label is kept
+
+
+def test_a_file_name_label_on_a_github_link_is_kept():
+    out = W.rewrite_links("[board-alignment.md](board-alignment.md)", "docs/status.md", PAGES)
+    assert out == f"[board-alignment.md]({W.REPO_URL}/blob/main/docs/board-alignment.md)"

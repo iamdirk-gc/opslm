@@ -39,7 +39,7 @@ code do today.
 | D-16 | "Net sales" is an unconditional revenue variant but "Net revenue" is conditional. Intended? And the plan page's example (Revenue vs Net Revenue equivalent) contradicts the metric page. | The metric page wins; guidelines v1.1 follow it. The plan page example still needs rewording. | Board question 2 |
 | D-17 | Adjusted EBITDA, ARR and FCF names are the same concept only when both facts state matching definitions; otherwise insufficient evidence, even for identical names. | Applied in guidelines v1.1 | Board question 3 |
 | D-18 | Flow vs point-in-time pairs (revenue vs ARR): the scope judgment is left undetermined and the concept difference settles the label. | Applied in the generator | Board question 5 |
-| D-19 | The mined set is not representative: the mix of strata is deliberate, so base rates cannot be read off it. Agree to say so in the release write-up. Also the defaults for stratum weights and the 50/10/40 split of companies. | Defaults in [pair-mining.md](pair-mining.md) | PR #9 |
+| D-19 | The mined set is not representative: the mix of strata is deliberate, so base rates cannot be read off it. Agree to say so in the release write-up. Also the defaults for stratum weights and the 50/10/40 split of companies. | Defaults in [pair-mining.md](pair-mining.md) | [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) |
 
 ## C. Needed before the release
 
@@ -61,13 +61,13 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 
 | ID | Decision | Decided | How |
 |---|---|---|---|
-| X-01 | The v1 metric set: Revenue, Gross margin, Adjusted EBITDA and Net income core; ARR optional; FCF and cash dropped | 2026-10-11 | PR #5 |
+| X-01 | The v1 metric set: Revenue, Gross margin, Adjusted EBITDA and Net income core; ARR optional; FCF and cash dropped | 2026-10-11 | [PR #5](https://github.com/iamdirk-gc/opslm/pull/5) |
 | X-02 | Net revenue is not a free variant of revenue (limitations #3) | 2026-10-11 | Metric page |
-| X-03 | Schema v0.2.0 (facts with evidence spans, input and output, gold labels) | 2026-10-11 | PR #6 and #7 |
-| X-04 | Reasons: only the primary reason is checked against the relationship; secondary reasons are free | 2026-10-18 | Review of PR #8 |
-| X-05 | Reviewers who differ on the primary reason block finalize; different evidence is unioned and flagged | 2026-10-18 | Review of PR #8 |
-| X-06 | `metric_id` is hidden from the LLM by default; the model chooses its own evidence spans | 2026-10-18 | Review of PR #8 |
-| X-07 | The rules baseline knowing the held-out names is accepted; the real human-labeled holdout is the headline result (limitations #20) | 2026-10-18 | Review of PR #8 |
+| X-03 | Schema v0.2.0 (facts with evidence spans, input and output, gold labels) | 2026-10-11 | [PR #6](https://github.com/iamdirk-gc/opslm/pull/6) and #7 |
+| X-04 | Reasons: only the primary reason is checked against the relationship; secondary reasons are free | 2026-10-18 | Review of [PR #8](https://github.com/iamdirk-gc/opslm/pull/8) |
+| X-05 | Reviewers who differ on the primary reason block finalize; different evidence is unioned and flagged | 2026-10-18 | Review of [PR #8](https://github.com/iamdirk-gc/opslm/pull/8) |
+| X-06 | `metric_id` is hidden from the LLM by default; the model chooses its own evidence spans | 2026-10-18 | Review of [PR #8](https://github.com/iamdirk-gc/opslm/pull/8) |
+| X-07 | The rules baseline knowing the held-out names is accepted; the real human-labeled holdout is the headline result (limitations #20) | 2026-10-18 | Review of [PR #8](https://github.com/iamdirk-gc/opslm/pull/8) |
 | X-08 | Planning stays in the spreadsheet; no GitHub Projects (board question 7) | October 2026, before 11 Oct | Message |
 | X-10 | **The document set (task 2.2):** 15 public companies, 9 holdout (benchmark pairs only, never mined for templates) and 6 pattern sources (mined for templates, may supply real training pairs); the roles and the documents in the set are on the [wiki](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Synthetic-Data-Requirements) | 2026-10-12 | Wiki page |
 | X-11 | Four labels; explainable differences live in reason codes, not a fifth label (was D-09) | 2026-10-12 | Wiki page |

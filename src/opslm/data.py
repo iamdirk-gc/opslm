@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -41,6 +42,17 @@ def write_cases(path: str | Path, cases: Iterable[EvalCase]) -> None:
         f.writelines(case.model_dump_json() + "\n" for case in sorted(cases, key=lambda c: c.case_id))
 
 
+_COMPANY_SUFFIXES = {"inc", "incorporated", "corp", "corporation", "co", "company", "llc", "ltd",
+                     "limited", "plc", "lp", "llp", "gmbh", "sa", "ag"}
+
+
+def company_key(name: str) -> str:
+    """A company name reduced to what identifies it: case, punctuation and legal suffix removed,
+    so 'Acme Corp.' and 'ACME, Inc.' are the same company for split-leakage purposes."""
+    tokens = re.sub(r"[^a-z0-9]+", " ", name.casefold().replace("&", " and ")).split()
+    return " ".join(t for t in tokens if t not in _COMPANY_SUFFIXES)
+
+
 def _fact_content(fact: BusinessFact) -> str:
     """What a fact claims, without ids and locations, so a copy under new ids still matches."""
     return fact.model_dump_json(exclude={"fact_id", "evidence", "extraction"})
@@ -51,7 +63,7 @@ def validate_cases(cases: list[EvalCase]) -> list[str]:
 
     Checks that matter for a trustworthy benchmark:
     - case_ids are unique
-    - a document family never spans more than one split (company-level separation)
+    - a company never spans more than one split, and neither does a document family
     - a fact_id never appears in more than one split, and always means the same fact
     - the same pair of facts never appears in more than one split, even under new ids
     - test cases are labeled by people, and their labels follow the current guideline version
@@ -64,6 +76,8 @@ def validate_cases(cases: list[EvalCase]) -> list[str]:
             problems.append(f"duplicate case_id: {case.case_id}")
         seen_ids.add(case.case_id)
 
+    company_splits: dict[str, set[str]] = defaultdict(set)
+    company_names: dict[str, str] = {}
     family_splits: dict[str, set[str]] = defaultdict(set)
     fact_splits: dict[str, set[str]] = defaultdict(set)
     fact_content: dict[str, str] = {}
@@ -73,6 +87,10 @@ def validate_cases(cases: list[EvalCase]) -> list[str]:
         split = case.gold.split
         for family in case.input.document_families():
             family_splits[family].add(split)
+        for doc in case.input.documents:
+            key = company_key(doc.company)
+            company_splits[key].add(split)
+            company_names.setdefault(key, doc.company)
         pair = case.input
         for fact in (pair.fact_a, pair.fact_b):
             fact_splits[fact.fact_id].add(split)
@@ -93,6 +111,9 @@ def validate_cases(cases: list[EvalCase]) -> list[str]:
                 f"current is {GUIDELINE_VERSION}"
             )
 
+    for key, splits in sorted(company_splits.items()):
+        if len(splits) > 1:
+            problems.append(f"company {company_names[key]!r} spans multiple splits: {sorted(splits)}")
     for family, splits in sorted(family_splits.items()):
         if len(splits) > 1:
             problems.append(f"document family {family} spans multiple splits: {sorted(splits)}")

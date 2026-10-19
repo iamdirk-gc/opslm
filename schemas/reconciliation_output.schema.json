@@ -99,6 +99,7 @@
         "reported_scale": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0.0,
               "type": "number"
             },
             {
@@ -106,7 +107,7 @@
             }
           ],
           "default": "1",
-          "description": "Scale as shown in the source: 1e6 for '$ in millions'.",
+          "description": "Scale as shown in the source: 1e6 for '$ in millions'. Must be positive.",
           "title": "Reported Scale"
         },
         "unit": {

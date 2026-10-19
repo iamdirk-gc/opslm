@@ -39,6 +39,7 @@ from opslm.schema import (
     Relationship,
     Source,
     Split,
+    reasons_problem,
 )
 
 VERDICTS = ("yes", "no", "cannot_tell")
@@ -336,6 +337,10 @@ def _parse_judgments(
     if bad:
         problems.append(f"{where}: unknown reason {', '.join(map(repr, bad))}; see the "
                         "primary_reason dropdown for valid codes")
+    elif primary:
+        misfit = reasons_problem(label.value, reasons)
+        if misfit:
+            problems.append(f"{where}: your judgments give '{label.value}', but {misfit}")
 
     refs = _items(col("evidence_refs"))
     unknown = [r for r in refs if r not in candidate.input.span_ids()]
@@ -436,6 +441,8 @@ class Agreement(_Model):
     scope_agreement: float
     scope_kappa: float | None
     disagreements: list[str]
+    reason_differs: list[str]  # judgments agree but the primary reason differs (needs adjudication)
+    evidence_differs: list[str]  # judgments and primary reason agree but the cited spans differ
     flagged: list[str]
 
 
@@ -443,7 +450,11 @@ def compare_reviews(
     a: Iterable[Review], b: Iterable[Review], candidates: Iterable[CandidatePair]
 ) -> Agreement:
     """Agreement on the cases both reviewers did. A case is a disagreement if the final label
-    or either judgment differs."""
+    or either judgment differs. Two milder differences are reported separately: a different
+    primary reason (``reason_differs``, which needs adjudication because results are sliced by it)
+    and different cited spans with everything else equal (``evidence_differs``, which ``finalize``
+    resolves by taking the union and flagging it, since reviewers often cite different numbers of
+    spans for the same conclusion)."""
     by_id = {c.case_id: c for c in candidates}
     ra, rb = {r.case_id: r for r in a}, {r.case_id: r for r in b}
     shared = sorted(set(ra) & set(rb))
@@ -455,15 +466,21 @@ def compare_reviews(
     def agree(pair: tuple[list[str], list[str]]) -> float:
         return sum(p == q for p, q in zip(*pair, strict=True)) / len(shared) if shared else 0.0
 
+    disagreements = [
+        i for k, i in enumerate(shared)
+        if lab[0][k] != lab[1][k] or con[0][k] != con[1][k] or sco[0][k] != sco[1][k]
+    ]
+    reason_differs = [i for i in shared if i not in disagreements and not _same_reason(ra[i], rb[i])]
+    evidence_differs = [i for i in shared if i not in disagreements and i not in reason_differs
+                        and not _same_evidence(ra[i], rb[i])]
     return Agreement(
         n=len(shared),
         label_agreement=agree(lab), label_kappa=cohen_kappa(*lab),
         concept_agreement=agree(con), concept_kappa=cohen_kappa(*con),
         scope_agreement=agree(sco), scope_kappa=cohen_kappa(*sco),
-        disagreements=[
-            i for k, i in enumerate(shared)
-            if lab[0][k] != lab[1][k] or con[0][k] != con[1][k] or sco[0][k] != sco[1][k]
-        ],
+        disagreements=disagreements,
+        reason_differs=reason_differs,
+        evidence_differs=evidence_differs,
         flagged=[i for i in shared if ra[i].flag or rb[i].flag],
     )
 
@@ -475,10 +492,12 @@ def disagreement_rows(
     by_id = {c.case_id: c for c in candidates}
     ra, rb = {r.case_id: r for r in a}, {r.case_id: r for r in b}
     rows = []
-    for case_id in sorted(set(agreement.disagreements) | set(agreement.flagged)):
+    needs_row = set(agreement.disagreements) | set(agreement.reason_differs) | set(agreement.flagged)
+    for case_id in sorted(needs_row):
         c = by_id[case_id]
-        row = {"case_id": case_id, "values_agree": _agree_text(c),
-               "why": "disagree" if case_id in agreement.disagreements else "flagged"}
+        why = ("disagree" if case_id in agreement.disagreements
+               else "primary reason differs" if case_id in agreement.reason_differs else "flagged")
+        row = {"case_id": case_id, "values_agree": _agree_text(c), "why": why}
         row.update(_candidate_cells(c))
         for prefix, review in zip(_REVIEW_PREFIXES, (ra[case_id], rb[case_id]), strict=True):
             row[f"{prefix}_reviewer"] = review.reviewer
@@ -536,10 +555,19 @@ class FinalizeResult(_Model):
     cases: list[EvalCase]
     problems: list[str]
     unlabeled: list[str]
+    evidence_unioned: list[str] = []  # reviewers cited different spans; the union was taken
 
 
 def _same_judgments(x: Review, y: Review) -> bool:
     return (x.concept_same, x.scope_same) == (y.concept_same, y.scope_same)
+
+
+def _same_reason(x: Review, y: Review) -> bool:
+    return x.reasons[:1] == y.reasons[:1]
+
+
+def _same_evidence(x: Review, y: Review) -> bool:
+    return set(x.evidence_refs) == set(y.evidence_refs)
 
 
 def finalize(
@@ -549,10 +577,11 @@ def finalize(
 ) -> FinalizeResult:
     """Turn reviews into evaluation cases.
 
-    A resolution wins. Otherwise reviewers must agree on both judgments (the first reviewer's
-    reasons, evidence and rationale are kept; the second is recorded as ``reviewed_by``).
-    Unreviewed candidates are skipped and reported; unresolved disagreements are problems.
-    The result is checked for split leakage.
+    A resolution wins. Otherwise reviewers must agree on both judgments and on the primary
+    reason (the first reviewer's reasons and rationale are kept; the second is recorded as
+    ``reviewed_by``). If they cite different evidence spans, the gold label takes the union and
+    says so in ``adjudication_note``. Unreviewed candidates are skipped and reported; unresolved
+    disagreements are problems. The result is checked for split leakage.
     """
     candidates = list(candidates)
     resolved = {r.case_id: r for r in resolutions}
@@ -564,6 +593,7 @@ def finalize(
     cases: list[EvalCase] = []
     problems: list[str] = []
     unlabeled: list[str] = []
+    unioned: list[str] = []
     for c in candidates:
         rs = reviews.get(c.case_id, [])
         final = resolved.get(c.case_id)
@@ -574,18 +604,28 @@ def finalize(
             if any(not _same_judgments(rs[0], r) for r in rs[1:]):
                 problems.append(f"{c.case_id}: reviewers disagree and no resolution was provided")
                 continue
+            if any(not _same_reason(rs[0], r) for r in rs[1:]):
+                problems.append(f"{c.case_id}: reviewers agree on the judgments but differ on the "
+                                "primary reason, and no resolution was provided")
+                continue
             final = rs[0]
         if final.reviewer == RESOLVER:
             labeled_by = ", ".join(r.reviewer for r in rs) or RESOLVER
             reviewed_by, note = RESOLVER, final.flag
+            refs = list(final.evidence_refs)
         else:
             labeled_by = final.reviewer
             reviewed_by, note = (", ".join(r.reviewer for r in rs[1:]) or None), None
+            refs = list(dict.fromkeys(ref for r in rs for ref in r.evidence_refs))
+            if any(not _same_evidence(rs[0], r) for r in rs[1:]):
+                cited = "; ".join(r.reviewer + ": " + ", ".join(r.evidence_refs) for r in rs)
+                note = f"reviewers cited different evidence spans; the union was taken ({cited})"
+                unioned.append(c.case_id)
         try:
             cases.append(EvalCase(input=c.input, gold=GoldLabel(
                 case_id=c.case_id, relationship=derived_label(c, final),
                 concept_same=final.concept_same, scope_same=final.scope_same,
-                reasons=list(final.reasons), required_evidence_refs=list(final.evidence_refs),
+                reasons=list(final.reasons), required_evidence_refs=refs,
                 rationale=final.rationale, tags=list(c.tags), split=c.split, source=c.source,
                 labeled_by=labeled_by, reviewed_by=reviewed_by, adjudication_note=note,
                 guideline_version=GUIDELINE_VERSION,
@@ -593,4 +633,5 @@ def finalize(
         except ValueError as e:
             problems.append(f"{c.case_id}: {e}")
     problems += validate_cases(cases)
-    return FinalizeResult(cases=cases, problems=problems, unlabeled=unlabeled)
+    return FinalizeResult(cases=cases, problems=problems, unlabeled=unlabeled,
+                          evidence_unioned=unioned)

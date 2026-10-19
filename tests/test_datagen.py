@@ -13,7 +13,7 @@ from opslm.datagen.audit import compare_to_construction
 from opslm.datagen.generate import GeneratorError, generate, write_outputs
 from opslm.eval.harness import evaluate
 from opslm.labeling import Review, export_review_sheet, read_candidates
-from opslm.labels import GUIDELINE_VERSION
+from opslm.labels import GUIDELINE_VERSION, values_agree
 from opslm.schema import CONSTRUCTION_LABELER, Relationship, Split
 
 HELDOUT = {n for c in V.CONCEPTS.values() for n in c.heldout}
@@ -95,10 +95,13 @@ def test_test_candidates_match_construction_cases(big):
     assert all(c.split == Split.TEST for c in big.test_candidates)
 
 
-def test_rules_baseline_is_not_at_ceiling(big):
-    # a generator built from the baseline's own vocabulary would score near 100% here
+def test_rules_baseline_is_strong_on_names_but_cannot_read_definitions(big):
+    # The baseline knows every naming variant on the metric page (a test requires it), so it does
+    # well on synthetic names. A generator whose hard cases were solvable by lookup would score
+    # near 100% here; the cases that need a definition read must stay out of its reach.
     run = evaluate(RulesBaseline(), big.train, bootstrap_n=0)
-    assert run.metrics["accuracy"].value < 0.8
+    assert run.metrics["accuracy"].value < 0.95
+    assert run.slices["tag"]["definition_resolves"].accuracy < 0.5
 
 
 def _pairs(cases):
@@ -143,15 +146,60 @@ def test_quantities_are_normalized_to_base_units(big):
             assert (q.unit == "currency") == (q.currency is not None)
 
 
-def test_negative_net_income_is_signed_and_uses_parentheses(big):
-    found = [f for c in big.train for f in (c.input.fact_a, c.input.fact_b) if f.quantity.value < 0]
+def _facts(cases):
+    for c in cases:
+        yield from (c.input.fact_a, c.input.fact_b)
+
+
+def test_negative_net_income_is_signed_and_printed_in_a_recognisable_style(big):
+    found = [(c, f) for c in big.train for f in (c.input.fact_a, c.input.fact_b)
+             if f.quantity.value < 0]
     assert found and all(f.metric_label.startswith(("Net income", "Net earnings", "Net loss",
-                                                    "Profit")) for f in found)
-    assert all(f.quantity.raw_text.startswith("(") for f in found)
-    assert any("(" in f.evidence[0].text for f in found)
-    neg_equivalent = [c for c in big.train if c.gold.relationship == "equivalent"
-                      and c.input.fact_a.quantity.value < 0]
-    assert neg_equivalent and all("sign_convention" in c.gold.reasons for c in neg_equivalent)
+                                                    "Profit")) for _, f in found)
+    # outside the sign-convention scenarios a loss is always printed in parentheses
+    plain = [f for c, f in found if "sign_convention" not in c.gold.tags]
+    assert plain and all(f.quantity.raw_text.startswith("(") for f in plain)
+    assert any("(" in f.evidence[0].text for f in plain)
+
+
+def test_sign_convention_equivalents_show_the_same_loss_in_different_styles(big):
+    cases = [c for c in big.train + big.validation if "sign_convention" in c.gold.tags
+             and c.gold.relationship == "equivalent"]
+    assert cases
+    for c in cases:
+        a, b = c.input.fact_a.quantity, c.input.fact_b.quantity
+        assert a.value < 0 and b.value < 0 and values_agree(a, b) and a.raw_text != b.raw_text
+        assert c.gold.reasons[0] == "sign_convention"
+    labelled = [f for f in _facts(cases) if f.metric_label == "Net loss"]
+    assert labelled and all(not f.quantity.raw_text.startswith(("(", "-")) for f in labelled)
+
+
+def test_a_lost_sign_is_a_conflict(big):
+    cases = [c for c in big.train + big.validation if "sign_error" in c.gold.tags]
+    assert cases
+    for c in cases:
+        a, b = c.input.fact_a.quantity, c.input.fact_b.quantity
+        assert a.value == -b.value != 0
+        assert c.gold.relationship == "conflicting"
+        assert c.gold.reasons[:2] == ["value_mismatch", "sign_convention"]
+
+
+def test_as_of_mismatch_uses_arr_with_matching_definitions(big):
+    cases = [c for c in big.train if "as_of_mismatch" in c.gold.tags]
+    assert cases
+    for c in cases:
+        a, b = c.input.fact_a, c.input.fact_b
+        assert a.metric_id == b.metric_id == "arr"
+        assert a.period.type == b.period.type == "instant" and a.period.as_of != b.period.as_of
+        assert a.stated_definition and b.stated_definition  # concept is settled, only the date differs
+        assert c.gold.relationship == "related_but_different"
+        assert c.gold.reasons == ["as_of_mismatch"]
+        assert c.gold.concept_same is True and c.gold.scope_same is False
+
+
+def test_new_reason_codes_appear_as_primary_reasons(big):
+    primary = {c.gold.reasons[0] for c in big.train + big.validation + big.test_construction}
+    assert {"as_of_mismatch", "sign_convention"} <= primary
 
 
 def test_wrong_template_expectation_fails_loudly(monkeypatch):
@@ -225,3 +273,28 @@ def test_cli_smoke(tmp_path, capsys):
     main(["--scenarios", "40", "--seed", "1", "--out-dir", str(tmp_path)])
     out = capsys.readouterr().out
     assert "train" in out and "wrote manifest" in out
+
+
+def test_basis_diff_changes_only_the_accounting_basis(big):
+    cases = [c for c in big.train if "basis_diff" in c.gold.tags]
+    assert cases
+    for c in cases:
+        a, b = c.input.fact_a, c.input.fact_b
+        assert a.metric_label == b.metric_label
+        assert (a.accounting_basis, b.accounting_basis) == ("gaap", "non_gaap")
+        assert c.gold.reasons == ["basis_mismatch"] and c.gold.concept_same is False
+
+
+def test_cases_using_a_held_out_name_are_tagged_so_results_can_be_sliced(big):
+    from opslm.datagen.vocab import HELDOUT_NAMES
+
+    train_tagged = [c for c in big.train if "heldout_name" in c.gold.tags]
+    assert train_tagged == []  # training never contains these names
+    later = big.validation + big.test_construction
+    tagged = [c for c in later if "heldout_name" in c.gold.tags]
+    assert tagged
+    for c in later:
+        uses = bool({c.input.fact_a.metric_label, c.input.fact_b.metric_label} & HELDOUT_NAMES)
+        assert uses == ("heldout_name" in c.gold.tags)
+    run = evaluate(RulesBaseline(), later, bootstrap_n=0)
+    assert run.slices["tag"]["heldout_name"].n == len(tagged)

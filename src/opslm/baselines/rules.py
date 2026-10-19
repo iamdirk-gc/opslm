@@ -22,7 +22,8 @@ from opslm.schema import (
     ReconciliationOutput,
 )
 
-# canonical concept -> names it is reported under
+# canonical concept -> names it is reported under. The names for the v1 metrics must cover every
+# naming variant on docs/metric-set-v1.md (a test checks); the rest is a general synonym list.
 DEFAULT_SYNONYMS: dict[str, tuple[str, ...]] = {
     "revenue": (
         "revenue", "revenues", "sales", "net sales", "total revenue", "total revenues",
@@ -30,11 +31,13 @@ DEFAULT_SYNONYMS: dict[str, tuple[str, ...]] = {
     ),
     "cogs": ("cost of goods sold", "cogs", "cost of sales", "cost of revenue"),
     "gross_profit": ("gross profit", "gross income"),
-    "gross_margin": ("gross margin",),
+    "gross_margin": ("gross margin", "gm", "gross profit margin"),
     "operating_income": ("operating income", "operating profit", "ebit", "income from operations"),
     "ebitda": ("ebitda",),
-    "net_income": ("net income", "net earnings", "net profit", "profit after tax"),
-    "arr": ("arr", "annual recurring revenue"),
+    "adjusted_ebitda": ("adjusted ebitda", "adj ebitda", "ebitda adjusted"),
+    "net_income": ("net income", "net earnings", "net profit", "profit after tax", "net loss",
+                   "net income loss", "profit for the period"),
+    "arr": ("arr", "annual recurring revenue", "annualized recurring revenue"),
     "mrr": ("mrr", "monthly recurring revenue"),
     "opex": ("operating expenses", "opex"),
     "sga": ("sg and a", "sga", "selling general and administrative expenses",
@@ -49,6 +52,10 @@ DEFAULT_SYNONYMS: dict[str, tuple[str, ...]] = {
     "fcf": ("fcf", "free cash flow"),
     "customers": ("customers", "number of customers", "customer count"),
 }
+
+# Metrics that mean what each company defines them to mean (docs/labeling-guidelines.md): the
+# same name is the same concept only when both facts state matching definitions.
+_COMPANY_DEFINED = {"arr", "adjusted_ebitda", "fcf"}
 
 # Words that change a metric's meaning. Two facts with different marker sets are different
 # concepts even if the core metric matches ("EBITDA" vs "Adjusted EBITDA").
@@ -122,6 +129,12 @@ class RulesBaseline:
             # both recognised and different -> different concepts; otherwise we can't tell
             return (False if core_a in known and core_b in known else None), ["metric"]
         if markers_a == markers_b:
+            if core_a in _COMPANY_DEFINED:
+                da, db = a.stated_definition, b.stated_definition
+                # a baseline cannot compare meanings, so only identical definition text counts
+                if da and db and normalize_text(da) == normalize_text(db):
+                    return True, []
+                return None, ["definition"]
             return True, []
         basis_only = (markers_a ^ markers_b) == {_BASIS_MARKER} and a.accounting_basis != b.accounting_basis
         return False, ["basis"] if basis_only else ["metric"]

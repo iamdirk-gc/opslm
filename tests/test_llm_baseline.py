@@ -21,10 +21,11 @@ def pair(**kw):
     return case_input(fact("a"), fact("b", **kw))
 
 
-def answer(concept="yes", scope="yes", fields=(), finish="stop", text=None, usage=(1000, 500)):
+def answer(concept="yes", scope="yes", fields=(), finish="stop", text=None, usage=(1000, 500),
+           refs=("s-a", "s-b")):
     body = text if text is not None else json.dumps(
         {"rationale": "r", "concept_same": concept, "scope_same": scope,
-         "deciding_fields": list(fields)}
+         "deciding_fields": list(fields), "evidence_refs": list(refs)}
     )
     return Completion(body, usage[0], usage[1], finish, "cyber" if finish == "refused" else None)
 
@@ -53,9 +54,9 @@ def predictor(*answers, **kw):
 def test_values_hidden_from_model_by_default():
     msg = build_user_message(pair(value="44.1"), show_values=False)
     assert "42.5" not in msg and "44.1" not in msg
-    assert "secret-doc-id" not in msg and "s-a" not in msg  # ids and locations omitted
+    assert "secret-doc-id" not in msg and "fact_id" not in msg  # document and fact ids omitted
     assert json.loads(msg)["fact_a"]["evidence"] == [
-        {"document_type": "10-K", "text": "Revenue for FY2025"}]
+        {"span_id": "s-a", "document_type": "10-K", "text": "Revenue for FY2025"}]
     shown = build_user_message(pair(value="44.1"), show_values=True)
     assert "42.5" in shown and "44.1" in shown
 
@@ -187,13 +188,94 @@ def test_cli_estimate_only_makes_no_calls(capsys):
 
 def test_long_rationale_is_clipped_to_the_output_limit():
     p, _ = predictor(answer(text=json.dumps({"rationale": "x" * 5000, "concept_same": "yes",
-                                             "scope_same": "yes", "deciding_fields": []})))
+                                             "scope_same": "yes", "deciding_fields": [],
+                                             "evidence_refs": ["s-a"]})))
     assert len(p.predict(pair()).explanation) == 1000
 
 
 def test_model_sees_structured_fields():
     msg = json.loads(build_user_message(pair(), show_values=True))
     a = msg["fact_a"]
-    assert a["metric_id"] == "revenue" and a["entity"]["scope"] == "consolidated"
+    assert "metric_id" not in a and a["entity"]["scope"] == "consolidated"
     assert a["period"] == {"type": "duration", "fiscal_year": 2025, "label": "FY2025"}
     assert a["value"]["as_printed"] == "42.5" and a["basis"]["accounting"] == "unknown"
+
+
+# --- evidence chosen by the model, and the metric_id hint ---------------------------------------
+
+
+def test_schema_limits_evidence_refs_to_the_cases_own_spans():
+    p, backend = predictor(answer())
+    p.predict(pair())
+    schema = backend.calls[0][2]
+    assert schema["properties"]["evidence_refs"]["items"]["enum"] == ["s-a", "s-b"]
+    assert "evidence_refs" in schema["required"]
+
+
+def test_model_cited_spans_become_the_output_evidence():
+    p, _ = predictor(answer(refs=("s-b",)))
+    out = p.predict(pair())
+    assert out.evidence_refs == ["s-b"]  # not every span: the model chose one
+
+
+def test_duplicate_citations_are_collapsed():
+    p, _ = predictor(answer(refs=("s-a", "s-a", "s-b")))
+    assert p.predict(pair()).evidence_refs == ["s-a", "s-b"]
+
+
+def test_no_evidence_for_a_decision_that_needs_it_is_an_error():
+    p, _ = predictor(answer(refs=()))
+    with pytest.raises(LLMError, match="cited no evidence spans"):
+        p.predict(pair())
+    assert p.describe()["failed_calls"] == 1
+
+
+def test_abstention_may_cite_no_evidence():
+    p, _ = predictor(answer(concept="cannot_tell", fields=["definition"], refs=()))
+    out = p.predict(pair())
+    assert out.relationship == Relationship.INSUFFICIENT_EVIDENCE and out.evidence_refs == []
+
+
+def test_unknown_span_ids_are_kept_so_the_harness_can_count_them():
+    p, _ = predictor(answer(refs=("s-a", "s-nonexistent")))
+    case = pair()
+    out = p.predict(case)
+    assert out.evidence_refs == ["s-a", "s-nonexistent"]
+    assert any("not in input" in x for x in out.check_references(case))
+
+
+def test_context_spans_are_shown_with_ids_and_can_be_cited():
+    from opslm.schema import EvidenceSpan
+
+    case = pair()
+    ctx = EvidenceSpan(span_id="ctx-1", doc_id=case.documents[0].doc_id, page=2,
+                       text="Net revenue means revenue after platform fees.")
+    case = case.model_copy(update={"context": [ctx]})
+    p, backend = predictor(answer(refs=("ctx-1",)))
+    out = p.predict(case)
+    assert json.loads(backend.calls[0][1])["context"][0]["span_id"] == "ctx-1"
+    assert "ctx-1" in backend.calls[0][2]["properties"]["evidence_refs"]["items"]["enum"]
+    assert out.evidence_refs == ["ctx-1"] and out.check_references(case) == []
+
+
+def test_metric_id_is_hidden_unless_asked():
+    msg = json.loads(build_user_message(pair(), show_values=False))
+    assert "metric_id" not in msg["fact_a"] and "metric_id" not in msg["fact_b"]
+    shown = json.loads(build_user_message(pair(), show_values=False, show_metric_id=True))
+    assert shown["fact_a"]["metric_id"] == "revenue"
+
+
+def test_show_metric_id_flag_reaches_the_prompt_and_the_run_config():
+    p, backend = predictor(answer(), show_metric_id=True)
+    p.predict(pair())
+    assert "metric_id" in backend.calls[0][1] and p.describe()["show_metric_id"] is True
+    q, backend2 = predictor(answer())
+    q.predict(pair())
+    assert "metric_id" not in backend2.calls[0][1] and q.describe()["show_metric_id"] is False
+
+
+def test_estimate_is_larger_when_more_is_shown():
+    cases = [pair()] * 5
+    base = estimate_cost(cases, None)["input_tokens_approx"]
+    more = estimate_cost(cases, None, show_values=True, show_metric_id=True)["input_tokens_approx"]
+    assert more > base

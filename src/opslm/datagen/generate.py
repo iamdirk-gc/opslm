@@ -24,15 +24,14 @@ from typing import Any
 from opslm.data import dataset_hash, validate_cases, write_cases
 from opslm.datagen import vocab as V
 from opslm.datagen.scenarios import TEMPLATES, Ctx, PairSpec
+from opslm.datagen.vocab import HELDOUT_NAMES
 from opslm.labeling import CandidatePair, write_candidates
 from opslm.labels import GUIDELINE_VERSION, derive_label, infer_reasons, values_agree
 from opslm.schema import (
     CONSTRUCTION_LABELER,
     EvalCase,
     GoldLabel,
-    ReasonCode,
     ReconciliationInput,
-    Relationship,
     Source,
     Split,
 )
@@ -64,9 +63,9 @@ def _case(spec: PairSpec, ctx: Ctx, kind: str, j: int, split: Split) -> EvalCase
             f"(values {a.quantity.raw_text} / {b.quantity.raw_text})"
         )
     reasons = list(spec.reasons) or infer_reasons(a, b, spec.concept, spec.scope, agree)
-    if label == Relationship.EQUIVALENT and (a.quantity.value < 0 or b.quantity.value < 0):
-        reasons.append(ReasonCode.SIGN_CONVENTION)
     case_id = f"{ctx.scenario_id}-p{j}"
+    # lets results be sliced by whether a fact uses a name that never appears in training
+    held_out_tag = ("heldout_name",) if {a.metric_label, b.metric_label} & HELDOUT_NAMES else ()
     doc_ids = {s.doc_id for f in (a, b) for s in f.evidence}
     return EvalCase(
         input=ReconciliationInput(case_id=case_id, fact_a=a, fact_b=b,
@@ -76,7 +75,7 @@ def _case(spec: PairSpec, ctx: Ctx, kind: str, j: int, split: Split) -> EvalCase
             scope_same=spec.scope, reasons=reasons,
             # each fact has one span, and every judgment rests on what both facts say
             required_evidence_refs=[s.span_id for f in (a, b) for s in f.evidence],
-            rationale=spec.rationale, tags=list(dict.fromkeys((kind, *spec.tags))), split=split,
+            rationale=spec.rationale, tags=list(dict.fromkeys((kind, *spec.tags, *held_out_tag))), split=split,
             source=Source.SYNTHETIC, labeled_by=CONSTRUCTION_LABELER,
             guideline_version=GUIDELINE_VERSION,
         ),

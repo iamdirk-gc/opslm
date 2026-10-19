@@ -92,3 +92,28 @@ ASOF = Period(type="instant", label="as of Dec 31, 2025", as_of="2025-12-31")
 )
 def test_infer_reasons(a, b, judgments, culprits, expected):
     assert infer_reasons(a, b, *judgments, culprits) == expected
+
+
+# --- sign conventions ----------------------------------------------------------------------------
+
+
+def _loss(fid, metric, raw, value="-5.2"):
+    f = fact(fid, metric, value)
+    return f.model_copy(update={"quantity": f.quantity.model_copy(update={"raw_text": raw})})
+
+
+def test_a_loss_written_two_ways_is_a_sign_convention_equivalent():
+    a, b = _loss("a", "Net income (loss)", "(5.2)"), _loss("b", "Net loss", "5.2")
+    assert infer_reasons(a, b, True, True, True) == ["sign_convention", "synonym"]
+    c = _loss("c", "Net income", "-5.2")
+    assert infer_reasons(a, c, True, True, True)[0] == "sign_convention"
+
+
+def test_the_same_style_on_both_sides_is_not_a_sign_convention_issue():
+    a, b = _loss("a", "Net income", "(5.2)"), _loss("b", "Net earnings", "(5.2)")
+    assert infer_reasons(a, b, True, True, True) == ["synonym"]
+
+
+def test_opposite_signs_add_sign_convention_to_a_value_conflict():
+    a, b = _loss("a", "Net income", "(5.2)"), fact("b", "Net income", "5.2")
+    assert infer_reasons(a, b, True, True, False) == ["value_mismatch", "sign_convention"]

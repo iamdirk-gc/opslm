@@ -85,7 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"label:   agreement {ag.label_agreement:.0%}, kappa {fmt(ag.label_kappa)}")
         print(f"concept: agreement {ag.concept_agreement:.0%}, kappa {fmt(ag.concept_kappa)}")
         print(f"scope:   agreement {ag.scope_agreement:.0%}, kappa {fmt(ag.scope_kappa)}")
-        print(f"{len(ag.disagreements)} disagreement(s), {len(ag.flagged)} flagged")
+        print(f"{len(ag.disagreements)} disagreement(s), {len(ag.reason_differs)} differing in primary "
+              f"reason only, {len(ag.flagged)} flagged")
+        print(f"{len(ag.evidence_differs)} case(s) where only the cited evidence differs (finalize "
+              "will take the union and note it)")
         L.export_disagreement_sheet(args.out, a, b, candidates, ag)
         print(f"adjudication sheet written to {args.out}")
         return 0
@@ -101,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
     res = L.read_reviews(args.resolutions) if args.resolutions else []
     final = L.finalize(candidates, sets, res)
     print(f"{len(final.cases)} case(s) finalized, {len(final.unlabeled)} not yet reviewed")
+    if final.evidence_unioned:
+        print(f"  {len(final.evidence_unioned)} case(s) had different cited evidence; the union was "
+              "taken and noted in adjudication_note: " + ", ".join(final.evidence_unioned))
     _report(final.problems, [])
     if final.problems:
         return 1

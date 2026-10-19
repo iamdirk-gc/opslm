@@ -34,6 +34,9 @@ Early development. The schema, dataset loader, rules baseline and evaluation har
 the synthetic generator exists; no real benchmark data, evaluated model-backed results or document pipeline exist yet. See
 [docs/limitations-and-open-questions.md](docs/limitations-and-open-questions.md) and
 [docs/board-alignment.md](docs/board-alignment.md) for what is missing and what is still undecided.
+The current snapshot is [docs/status.md](docs/status.md), open questions for the owner are in
+[docs/decisions.md](docs/decisions.md), and the next big piece is scoped in
+[docs/extraction-adapter-scope.md](docs/extraction-adapter-scope.md).
 
 Try the harness on the illustrative examples:
 

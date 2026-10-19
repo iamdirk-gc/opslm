@@ -24,6 +24,8 @@ No number produced so far says anything about real-world performance.
 
 ## Part 1: Decisions for the project owner
 
+> The consolidated, current list is [decisions.md](decisions.md), which also records which of these are decided. The text below is kept for the reasoning behind each item.
+
 Each item has what the engineering side did by default. Defaults can be changed; changes after labeling starts mean re-reviewing cases, so these are best settled **before** the labeling session.
 
 ### Labels and guidelines (most urgent, blocks labeling)

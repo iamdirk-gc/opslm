@@ -1,5 +1,7 @@
 # Project Board Alignment
 
+For the current snapshot, see [status.md](status.md); open questions are in [decisions.md](decisions.md).
+
 Compares the project board ("OpsLM Milestones & To-Dos", read on 2026-10-09) with the state of
 the repository, and lists what the board implies for engineering and what needs the project
 owner's decision. Dates are from the board's Tracker sheet.

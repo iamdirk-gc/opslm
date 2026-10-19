@@ -5,6 +5,7 @@ import pytest
 
 from opslm import labeling as L
 from opslm import mining as M
+from opslm.data import company_key
 from opslm.mining_cli import main
 from opslm.schema import Entity, EvidenceSpan, Period, SourceDocument, Split
 from tests.factories import fact

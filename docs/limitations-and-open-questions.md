@@ -24,6 +24,8 @@ No number produced so far says anything about real-world performance.
 
 ## Part 1: Decisions for the project owner
 
+> The consolidated, current list is [decisions.md](decisions.md), which also records which of these are decided. The text below is kept for the reasoning behind each item.
+
 Each item has what the engineering side did by default. Defaults can be changed; changes after labeling starts mean re-reviewing cases, so these are best settled **before** the labeling session.
 
 ### Labels and guidelines (most urgent, blocks labeling)
@@ -49,7 +51,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Data
 
 12. **Public data sources.** Suggested: SEC filings (including XBRL tags) for the public portion, and synthetic cases built around fictional companies. Which companies or sectors? Check each source's terms of use before redistribution.
-13. **No CircleEngage or MagnoliaHealth data.** This is a personal project, so no employer or customer documents, figures or terminology should appear in the data, repo or prompts. Confirm this boundary is understood on both sides.
+13. **No employer or customer data.** This is a personal project, so no documents, figures or terminology from either contributor's employers or customers should appear in the data, repo or prompts. Confirm this boundary is understood on both sides.
 14. **Dataset and model license.** Code is Apache 2.0. The dataset and model weights are separate. Suggested: CC BY 4.0 for the data, Apache 2.0 for weights. The base model's own license may restrict this (some open-weight models do).
 
 ### Models and budget
@@ -113,7 +115,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 - Labeling guidelines have never been used by a second person. Expect the first overlap batch to expose gaps.
 - No continuous integration, no pre-commit hooks, no type checking beyond ruff.
 - **Labeling tool is spreadsheet-based, not an app.** Chosen because it needs no hosting and fits two reviewers. Limits: no live collaboration on one sheet (each reviewer has their own), no row locking, no in-sheet display of the derived label, and the dropdowns are not enforced if a sheet is edited elsewhere (the importer re-checks everything). A web review app is possible later; if built it should be hosted on Google Cloud, not run from a laptop.
-- **Candidate sources.** The synthetic generator now produces candidate pairs (test split). Real candidates need the extraction adapter and a pair-mining tool, neither of which exists.
+- **Candidate sources.** The synthetic generator produces candidate pairs (test split), and the pair miner ([pair-mining.md](pair-mining.md)) can mine any corpus of extracted facts. Real candidates still need the extraction adapter (task 2.3), which does not exist, so the miner has only seen synthetic facts.
 - **Kappa on about 30 shared cases is noisy.** Treat the 0.7 target as a rough signal; a handful of disagreements can move it a lot.
 
 ## Part 3: Not yet designed

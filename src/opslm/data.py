@@ -49,6 +49,7 @@ _COMPANY_SUFFIXES = {"inc", "incorporated", "corp", "corporation", "co", "compan
 def company_key(name: str) -> str:
     """A company name reduced to what identifies it: case, punctuation and legal suffix removed,
     so 'Acme Corp.' and 'ACME, Inc.' are the same company for split-leakage purposes."""
+    name = re.sub(r"(?<=\b\w)\.", "", name)  # dotted abbreviations are one word: 'L.L.C.' is 'llc'
     tokens = re.sub(r"[^a-z0-9]+", " ", name.casefold().replace("&", " and ")).split()
     return " ".join(t for t in tokens if t not in _COMPANY_SUFFIXES)
 

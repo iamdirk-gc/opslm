@@ -6,32 +6,15 @@ does not recognize, or a "never merge" metric that the code would treat as the s
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
 from opslm.baselines.rules import RulesBaseline
 from opslm.datagen.vocab import metric_id_for
 from tests.factories import fact
+from tests.metric_page import METRIC_IDS, sections
 
-DOC = Path("docs/metric-set-v1.md")
-METRIC_IDS = {"Revenue": "revenue", "ARR": "arr", "Gross margin": "gross_margin",
-              "Adjusted EBITDA": "adjusted_ebitda", "Net income": "net_income"}
-
-
-def _sections() -> dict[str, dict[str, list[str]]]:
-    """metric heading -> {'variants': [...], 'related': [...]} parsed from the page."""
-    out: dict[str, dict[str, list[str]]] = {}
-    current = None
-    for line in DOC.read_text().splitlines():
-        if line.startswith("## "):
-            current = line[3:].strip()
-            out[current] = {"variants": [], "related": []}
-        elif current and line.startswith("- **Naming variants:**"):
-            out[current]["variants"] = [v.strip() for v in line.split(":**", 1)[1].split(";")]
-        elif current and line.startswith("- **Related but different (never merge):**"):
-            out[current]["related"] = [v.strip() for v in line.split(":**", 1)[1].split(";")]
-    return {k: v for k, v in out.items() if v["variants"]}
+_sections = sections
 
 
 def _name(item: str) -> str | None:

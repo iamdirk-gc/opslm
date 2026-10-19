@@ -86,6 +86,8 @@ def normalize_text(text: str) -> str:
 
 
 def normalize_entity(name: str) -> str:
+    # dotted abbreviations are one word: 'L.L.C.' is 'llc', not three letters
+    name = re.sub(r"(?<=\b\w)\.", "", name)
     tokens = [t for t in normalize_text(name).split() if t not in _ENTITY_SUFFIXES]
     return " ".join(tokens)
 
@@ -206,3 +208,8 @@ def explain(concept: bool | None, scope: bool | None, agree: bool | None,
     text = (f"Same concept: {_verdict(concept)}; same scope: {_verdict(scope)}; "
             f"values agree: {'not comparable' if agree is None else _verdict(agree)}.")
     return text + (f" Decided by: {', '.join(culprits)}." if culprits else "")
+
+
+# Public names for the entity and period comparisons, shared with the pair miner.
+entity_same = RulesBaseline._entity_same
+period_same = RulesBaseline._period_same

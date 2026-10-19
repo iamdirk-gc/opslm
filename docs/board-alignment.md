@@ -22,7 +22,7 @@ owner's decision. Dates are from the board's Tracker sheet.
 | 1.6 Seed examples | Not started | Nine illustrative examples exist; they are not the owner's hand-labeled seed set |
 | 2.1-2.4 Extraction | Not started | **Nothing built.** Extraction should produce `BusinessFact` records with `EvidenceSpan` locations and `SourceDocument` metadata |
 | 3.1 Generator | In progress | Built ([synthetic-data.md](synthetic-data.md)) |
-| 3.2 Mine real pairs | Not started | **No tool.** Needs pairing and blocking logic over extracted facts |
+| 3.2 Mine real pairs | In progress | Tool built ([pair-mining.md](pair-mining.md)): blocks by company and metric family, samples by stratum, assigns splits by company. **Untested on real extraction output**, which does not exist yet (2.3) |
 | 3.3 Split by company and document family | In progress | The loader enforces separation on both `SourceDocument.company` (normalized name) and `document_family`. Synthetic scenarios (one company each) use the scenario id as the family; real cases should set it per company and filing period |
 | 3.4 Label 100-200 cases | Not started | Workflow built ([labeling-workflow.md](labeling-workflow.md)); not yet used by two people |
 | 3.5 Training set | Not started | Generator produces it; label distribution is in the manifest |
@@ -36,15 +36,15 @@ owner's decision. Dates are from the board's Tracker sheet.
 ## Schedule risk
 
 The critical path is 2.3 (extraction adapter, due Oct 17) to 3.2 (mining real pairs, Oct 17-21) to
-3.4 (labeling 100-200 cases, Oct 20-24). Neither the adapter nor the pair-mining tool exists, and
-labeling has four days. Suggested mitigations:
+3.4 (labeling 100-200 cases, Oct 20-24). The pair-mining tool now exists but has only seen
+synthetic facts; the extraction adapter does not exist, and everything downstream waits on it.
+Suggested mitigations:
 - Start 2.1 and 2.3 immediately; the board has them starting Oct 13-14.
-- Add an explicit task for the pair-mining tool. It is not on the board and nobody owns it.
+- The pair-mining tool is built; once 2.3 produces facts and documents, mining is one command.
 - Decide a fallback: if real pairs are late, label the human-reviewed synthetic test candidates first, and label real pairs as they arrive.
 
 ## Gaps not on the board
 
-- Candidate-pair mining tool (3.2).
 - End-to-end evaluation mode and defined difficulty slices (4.1).
 - Evidence-span references on predictions (1.2, 2.3, 4.1).
 - A dry run of the labeling workflow with both reviewers before the real overlap batch.

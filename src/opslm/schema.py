@@ -143,9 +143,9 @@ class ReasonCode(str, Enum):
     UNSUPPORTED_CLAIM = "unsupported_claim"
 
 
-# Which reasons can be the primary reason for each relationship. Secondary reasons may also come
-# from DESCRIPTIVE_REASONS, which describe how the facts were named or how their numbers were
-# shown, whatever the relationship (for example a conflict between two synonymous labels).
+# Which reasons can be the primary reason for each relationship. The primary reason is the one
+# results are sliced by, so it has to fit. Secondary reasons may be any valid code: real pairs
+# combine causes (concept undeterminable and periods differ; a conflict between two synonyms).
 PRIMARY_REASONS: dict[str, frozenset[str]] = {
     "equivalent": frozenset({"exact_match", "synonym", "rounding", "unit_scale", "sign_convention"}),
     "conflicting": frozenset({"value_mismatch", "restatement"}),
@@ -156,7 +156,6 @@ PRIMARY_REASONS: dict[str, frozenset[str]] = {
         "missing_definition", "missing_period", "missing_entity", "currency_mismatch",
         "percent_vs_amount", "unsupported_claim"}),
 }
-DESCRIPTIVE_REASONS = frozenset({"synonym", "unit_scale", "rounding", "sign_convention"})
 
 
 def _value(x: object) -> str:
@@ -164,7 +163,9 @@ def _value(x: object) -> str:
 
 
 def reasons_problem(relationship: object, reasons: Iterable[object]) -> str | None:
-    """Why a reason list does not fit a relationship, or None if it does. Primary reason first."""
+    """Why a reason list does not fit a relationship, or None if it does.
+
+    Only the primary reason (first) is constrained; secondary reasons are free."""
     rel, codes = _value(relationship), [_value(r) for r in reasons]
     if not codes:
         return "at least one reason is required"
@@ -172,9 +173,6 @@ def reasons_problem(relationship: object, reasons: Iterable[object]) -> str | No
     if codes[0] not in primary_ok:
         return (f"primary reason '{codes[0]}' does not fit relationship '{rel}'; "
                 f"use one of: {', '.join(sorted(primary_ok))}")
-    extra = [c for c in codes[1:] if c not in primary_ok | DESCRIPTIVE_REASONS]
-    if extra:
-        return f"reasons {extra} do not fit relationship '{rel}'"
     return None
 
 

@@ -283,3 +283,18 @@ def test_basis_diff_changes_only_the_accounting_basis(big):
         assert a.metric_label == b.metric_label
         assert (a.accounting_basis, b.accounting_basis) == ("gaap", "non_gaap")
         assert c.gold.reasons == ["basis_mismatch"] and c.gold.concept_same is False
+
+
+def test_cases_using_a_held_out_name_are_tagged_so_results_can_be_sliced(big):
+    from opslm.datagen.vocab import HELDOUT_NAMES
+
+    train_tagged = [c for c in big.train if "heldout_name" in c.gold.tags]
+    assert train_tagged == []  # training never contains these names
+    later = big.validation + big.test_construction
+    tagged = [c for c in later if "heldout_name" in c.gold.tags]
+    assert tagged
+    for c in later:
+        uses = bool({c.input.fact_a.metric_label, c.input.fact_b.metric_label} & HELDOUT_NAMES)
+        assert uses == ("heldout_name" in c.gold.tags)
+    run = evaluate(RulesBaseline(), later, bootstrap_n=0)
+    assert run.slices["tag"]["heldout_name"].n == len(tagged)

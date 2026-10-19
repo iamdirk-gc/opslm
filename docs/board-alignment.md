@@ -17,7 +17,7 @@ owner's decision. Dates are from the board's Tracker sheet.
 |---|---|---|
 | 1.2 Schema | In progress | Schema v0.2.0 (`schema.py`) adopted from the owner's draft: provenance (`SourceDocument`, `EvidenceSpan` with page, table, cell or character offsets), facts, task input (`ReconciliationInput`), output (`ReconciliationOutput`: relationship, optional resolution status and canonical value, reason codes, `evidence_refs` to exact spans) and `GoldLabel`. JSON Schemas are checked in under `schemas/` |
 | 1.3 Guidelines | Not started | Drafted (v1.1), unreviewed by a second person |
-| 1.4 Repo | In progress | License, packaging, layout and 294 tests exist. CI added (GitHub Actions: lint, tests on Python 3.10-3.14, a fresh-install smoke run, a package build) |
+| 1.4 Repo | In progress | License, packaging, layout and 300 tests exist. CI added (GitHub Actions: lint, tests on Python 3.10-3.14, a fresh-install smoke run, a package build) |
 | 1.5 Eval contract and threshold | Not started | Metrics implemented. **The fine-tuning success threshold is not defined** |
 | 1.6 Seed examples | Not started | Nine illustrative examples exist; they are not the owner's hand-labeled seed set |
 | 2.1-2.4 Extraction | Not started | **Nothing built.** Extraction should produce `BusinessFact` records with `EvidenceSpan` locations and `SourceDocument` metadata |

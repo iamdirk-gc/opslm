@@ -335,30 +335,57 @@ def test_import_accepts_secondary_descriptors():
     assert res.problems == [] and res.reviews[0].reasons == ("value_mismatch", "synonym", "unit_scale")
 
 
-def test_agreement_reports_reason_and_evidence_differences_separately():
+def test_agreement_separates_a_different_reason_from_different_evidence():
     cands = [candidate(1, b_value="44.1"), candidate(2, b_value="44.1"), candidate(3)]
     a = [rev("c1", "A", True, True, RC.VALUE_MISMATCH), rev("c2", "A", True, True, RC.VALUE_MISMATCH),
          rev("c3", "A", True, True)]
     b = [rev("c1", "B", True, True, RC.RESTATEMENT),  # different primary reason
-         rev("c2", "B", True, True, RC.VALUE_MISMATCH, refs=("s-a2",)),  # different evidence
+         rev("c2", "B", True, True, RC.VALUE_MISMATCH, refs=("s-a2",)),  # different evidence only
          rev("c3", "B", True, True)]
     ag = L.compare_reviews(a, b, cands)
-    assert ag.disagreements == [] and ag.details_differ == ["c1", "c2"]
+    assert ag.disagreements == [] and ag.reason_differs == ["c1"] and ag.evidence_differs == ["c2"]
     rows = L.disagreement_rows(a, b, cands, ag)
-    assert [r["why"] for r in rows] == ["reason or evidence differs"] * 2
-    assert rows[1]["r2_evidence_refs"] == "s-a2"
+    assert [(r["case_id"], r["why"]) for r in rows] == [("c1", "primary reason differs")]
 
 
-def test_finalize_blocks_unresolved_reason_or_evidence_differences():
+def test_a_different_primary_reason_blocks_finalize_until_resolved():
     cands = [candidate(1, b_value="44.1")]
     a = [rev("c1", "A", True, True, RC.VALUE_MISMATCH)]
-    b = [rev("c1", "B", True, True, RC.VALUE_MISMATCH, refs=("s-a1",))]
+    b = [rev("c1", "B", True, True, RC.RESTATEMENT)]
     blocked = L.finalize(cands, [a, b])
-    assert blocked.cases == [] and "differ on the primary reason or evidence" in blocked.problems[0]
+    assert blocked.cases == [] and "differ on the primary reason" in blocked.problems[0]
 
-    res = [rev("c1", L.RESOLVER, True, True, RC.VALUE_MISMATCH)]
+    res = [rev("c1", L.RESOLVER, True, True, RC.RESTATEMENT)]
     ok = L.finalize(cands, [a, b], res)
-    assert ok.problems == [] and ok.cases[0].gold.required_evidence_refs == ["s-a1", "s-b1"]
+    assert ok.problems == [] and ok.cases[0].gold.reasons == ["restatement"]
+
+
+def test_different_evidence_is_unioned_and_flagged_not_blocked():
+    cands = [candidate(1, b_value="44.1")]
+    a = [rev("c1", "A", True, True, RC.VALUE_MISMATCH, refs=("s-a1", "s-b1"))]
+    b = [rev("c1", "B", True, True, RC.VALUE_MISMATCH, refs=("s-b1",))]
+    out = L.finalize(cands, [a, b])
+    assert out.problems == [] and out.evidence_unioned == ["c1"]
+    gold = out.cases[0].gold
+    assert gold.required_evidence_refs == ["s-a1", "s-b1"]  # union, first reviewer's order first
+    assert "union was taken" in gold.adjudication_note
+    assert "A: s-a1, s-b1" in gold.adjudication_note and "B: s-b1" in gold.adjudication_note
+
+
+def test_a_resolution_overrides_the_union():
+    cands = [candidate(1, b_value="44.1")]
+    a = [rev("c1", "A", True, True, RC.VALUE_MISMATCH, refs=("s-a1", "s-b1"))]
+    b = [rev("c1", "B", True, True, RC.VALUE_MISMATCH, refs=("s-b1",))]
+    res = [rev("c1", L.RESOLVER, True, True, RC.VALUE_MISMATCH, refs=("s-b1",))]
+    out = L.finalize(cands, [a, b], res)
+    assert out.cases[0].gold.required_evidence_refs == ["s-b1"] and out.evidence_unioned == []
+
+
+def test_import_accepts_a_secondary_reason_that_names_another_cause():
+    cands = [candidate(1, b_value="44.1")]
+    row = filled(L.review_rows(cands)[0], "yes", "yes", reason="value_mismatch", other="missing_period")
+    res = L.import_review_sheet([row], cands, "g")
+    assert res.problems == [] and res.reviews[0].reasons == ("value_mismatch", "missing_period")
 
 
 def test_finalize_accepts_identical_details_in_a_different_order():

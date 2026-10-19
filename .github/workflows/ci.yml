@@ -43,7 +43,7 @@ jobs:
 
   # pydantic's JSON Schema output can change between releases, so the checked-in schemas are
   # compared at the pydantic version recorded in schemas/pydantic_version.txt (the test jobs
-  # above skip that comparison for any other version).
+  # above skip that comparison when their pydantic is a different minor version).
   schemas:
     runs-on: ubuntu-latest
     steps:

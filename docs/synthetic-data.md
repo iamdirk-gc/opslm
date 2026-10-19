@@ -47,8 +47,11 @@ not be merged) alongside different-value cases.
   name-based mapper would assign it. "Adjusted EBITDA" with different stated adjustments keeps
   `adjusted_ebitda` on both facts, and "Net revenue" maps to `other`.
 - **Held-out vocabulary.** Some naming variants (for example "Turnover", "GM", "EBITDA
-  (adjusted)") appear only in validation and test scenarios, so those splits measure
-  generalization to unseen surface forms.
+  (adjusted)") appear only in validation and test scenarios, so for any *trained* system those
+  splits measure generalization to names it never saw. Cases that use one carry the tag
+  `heldout_name`, so results can be sliced by it. A system that looks names up in the metric page,
+  like the rules baseline, knows them already (it recognizes 7 of the 8) and scores higher on
+  that slice than on the rest, so for lookup systems the slice is not a generalization test.
 - **Not solvable by lookup.** The rules baseline knows every naming variant on the metric page (a
   test requires it), so it scores about 85% on generated data. The cases that need a definition
   read must stay out of its reach: a test fails if it scores above 95% overall or above 50% on

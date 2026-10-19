@@ -270,9 +270,14 @@ def _recorded_pydantic_version() -> str:
     return Path("schemas/pydantic_version.txt").read_text().strip()
 
 
+def _minor(version: str) -> str:
+    return ".".join(version.split(".")[:2])
+
+
 @pytest.mark.parametrize("name", list(MODELS))
 def test_checked_in_json_schemas_are_current(name):
-    if pydantic.VERSION != _recorded_pydantic_version():
+    # schema output can change between minor releases; patch releases are compared too
+    if _minor(pydantic.VERSION) != _minor(_recorded_pydantic_version()):
         msg = (f"schemas were generated with pydantic {_recorded_pydantic_version()}; installed "
                f"{pydantic.VERSION}. CI's 'schemas' job checks them at the recorded version.")
         if os.environ.get("OPSLM_REQUIRE_SCHEMA_CHECK"):
@@ -333,10 +338,9 @@ from tests.factories import gold
         ("equivalent", ("value_mismatch",)),
         ("related_but_different", ("synonym",)),
         ("insufficient_evidence", ("value_mismatch",)),
-        ("conflicting", ("value_mismatch", "period_mismatch")),
     ],
 )
-def test_reasons_that_contradict_the_relationship_are_rejected(relationship, reasons):
+def test_a_primary_reason_that_contradicts_the_relationship_is_rejected(relationship, reasons):
     concept, scope = {"equivalent": (True, True), "conflicting": (True, True),
                       "related_but_different": (False, True),
                       "insufficient_evidence": (None, True)}[relationship]
@@ -353,6 +357,10 @@ def test_reasons_that_contradict_the_relationship_are_rejected(relationship, rea
         ("conflicting", ("value_mismatch", "synonym")),
         ("related_but_different", ("definition_mismatch", "percent_vs_amount")),
         ("insufficient_evidence", ("missing_definition",)),
+        # real pairs combine causes, so any valid code may follow the primary one
+        ("insufficient_evidence", ("missing_definition", "period_mismatch")),
+        ("related_but_different", ("definition_mismatch", "missing_period")),
+        ("conflicting", ("value_mismatch", "period_mismatch")),
     ],
 )
 def test_sensible_reason_lists_are_accepted(relationship, reasons):
@@ -367,4 +375,5 @@ def test_reasons_problem_message_names_the_valid_choices():
 
     msg = reasons_problem("conflicting", ["synonym"])
     assert "value_mismatch" in msg and "restatement" in msg
+    assert reasons_problem("conflicting", ["value_mismatch", "synonym", "missing_period"]) is None
     assert reasons_problem("equivalent", []) == "at least one reason is required"

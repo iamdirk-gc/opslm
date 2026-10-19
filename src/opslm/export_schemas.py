@@ -5,9 +5,9 @@ mode (``reconciliation_output``), extraction pipelines that produce inputs, and 
 A test fails when they drift from ``opslm.schema``, so rerun this after any schema change.
 
 pydantic's JSON Schema output can change between releases, so the version used is recorded in
-``schemas/pydantic_version.txt``. The drift test only runs against that exact version (CI has a
-job that installs it), and is skipped for any other, so a pydantic upgrade cannot break the
-build on its own.
+``schemas/pydantic_version.txt``. The drift test is enforced for installs of that major.minor
+version and skipped for any other (CI has a job that installs the exact version and never
+skips), so a pydantic minor upgrade cannot break the build on its own.
 """
 
 from __future__ import annotations

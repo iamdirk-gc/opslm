@@ -34,6 +34,13 @@ Eighteen scenario templates cover the cases on the project board:
 Many related and conflicting templates include a **same-value trap** (identical numbers that must
 not be merged) alongside different-value cases.
 
+## Requirements
+
+The owner's requirements for synthetic data are on the wiki:
+[OpsLM Synthetic Data Requirements](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Synthetic-Data-Requirements). This generator predates the page and meets part of
+it. The measured gaps (volume, label mix, coverage grid, shortcut test, template holdout, realism,
+the real-set traps, per-case reproducibility fields) are tracked in [status.md](status.md).
+
 ## Guarantees
 
 - **Labels follow the guidelines by construction.** Each pair declares the guideline judgments

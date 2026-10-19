@@ -22,8 +22,8 @@ owner's decision. Dates are from the board's Tracker sheet.
 | 1.4 Repo | In progress | License, packaging, layout and 300 tests exist. CI added (GitHub Actions: lint, tests on Python 3.10-3.14, a fresh-install smoke run, a package build) |
 | 1.5 Eval contract and threshold | Not started | Metrics implemented. **The fine-tuning success threshold is not defined** |
 | 1.6 Seed examples | Not started | Nine illustrative examples exist; they are not the owner's hand-labeled seed set |
-| 2.1-2.4 Extraction | Not started | **Nothing built.** Extraction should produce `BusinessFact` records with `EvidenceSpan` locations and `SourceDocument` metadata |
-| 3.1 Generator | In progress | Built ([synthetic-data.md](synthetic-data.md)) |
+| 2.1-2.4 Extraction | Not started | **Adapter not built.** The document set (15 companies) was decided Oct 12 (2.2). Scoped in [extraction-adapter-scope.md](extraction-adapter-scope.md). Extraction should produce `BusinessFact` records with `EvidenceSpan` locations and `SourceDocument` metadata |
+| 3.1 Generator | In progress | Generator v1 built; the owner's requirements page (wiki, draft v0.3) was written after it and the gaps are listed in [status.md](status.md) |
 | 3.2 Mine real pairs | In progress | Tool built ([pair-mining.md](pair-mining.md)): blocks by company and metric family, samples by stratum, assigns splits by company. **Untested on real extraction output**, which does not exist yet (2.3) |
 | 3.3 Split by company and document family | In progress | The loader enforces separation on both `SourceDocument.company` (normalized name) and `document_family`. Synthetic scenarios (one company each) use the scenario id as the family; real cases should set it per company and filing period |
 | 3.4 Label 100-200 cases | Not started | Workflow built ([labeling-workflow.md](labeling-workflow.md)); not yet used by two people |

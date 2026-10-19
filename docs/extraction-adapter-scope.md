@@ -3,7 +3,7 @@
 Status: scoping, 2026-10-18. Nothing here is built. The adapter turns source documents into the
 facts and documents that the pair miner ([pair-mining.md](pair-mining.md)) consumes, so it is the
 last missing link on the critical path to the real holdout set. Decisions that need the project
-owner are collected in [decisions.md](decisions.md); the ones this scope depends on are D-01 to D-06.
+owner are collected in [decisions.md](decisions.md); the ones this scope depends on are D-02 to D-06. The document set itself was decided on Oct 12 (15 companies; see the wiki's Synthetic Data Requirements page).
 
 ## 1. The contract
 
@@ -26,7 +26,7 @@ documents.jsonl` then produces candidates for labeling.
 | `accounting_basis` | Section headings ("Non-GAAP", reconciliation tables), the metric itself (Adjusted EBITDA is non-GAAP) | Rules | Marking a non-GAAP table GAAP |
 | `reporting_status` | Document type (10-K statements audited, 10-Q and decks unaudited) | Rules from `doc_type` | Audited line items inside an unaudited document |
 | `stated_definition` | Footnotes, glossaries, "we define ... as" sentences near the label | Text search; the definition sentence is also added to the fact's evidence so it can be cited | Definitions several pages away or only in a different document |
-| `evidence` | The cell or phrase | Page, table id, cell reference (or character offsets) plus the verbatim text | Provenance the parser does not expose (see section 4) |
+| `evidence` | The cell or phrase | Page, table id, cell reference (or character offsets) plus the verbatim text | Provenance the parser does not expose (see section 5) |
 | `extraction` | The adapter | Extractor name and version, optional confidence | n/a |
 
 **Sign normalization (decision D-05).** The recommendation is that the adapter normalizes sign
@@ -60,7 +60,10 @@ python -m opslm.extract --manifest manifest.jsonl --parser docling --out-dir dat
 
 ### The manifest (the owner's task 2.2 deliverable)
 
-One row per source document, as a CSV or JSONL the owner can produce from a spreadsheet:
+The requirements page specifies one folder per company with a `manifest.csv` recording each file's
+source URL, retrieval date and SHA-256 hash. The adapter reads those manifests, one row per source
+document, with these columns (the first three are the page's; the rest let the adapter and the
+miner do their jobs):
 
 | Column | Example |
 |---|---|
@@ -70,12 +73,31 @@ One row per source document, as a CSV or JSONL the owner can produce from a spre
 | `doc_type` | `10-K`, `10-Q`, `earnings_deck`, `investor_presentation`, `workbook` |
 | `source_url` | where it was retrieved |
 | `retrieved_at` | date |
+| `sha256` | hash of the file as retrieved |
 | `license_note` | redistribution terms, or blank until decided (D-02) |
-| `local_path` | where the file is on disk (never committed; see D-02) |
+| `ticker`, `role` | `holdout` or `pattern` (the miner uses the role to choose the split, so holdout companies' pairs go to the test split only) |
+| `local_path` | the file in the company's folder (never committed; see D-02) |
 
-The adapter computes `content_sha256` itself.
+The adapter recomputes the SHA-256 and fails if it differs from the manifest.
 
-## 3. Approach by document type
+## 3. The real document set
+
+Per the requirements page, each of the 15 companies has a 10-K, a Q4 earnings release, and usually
+an investor deck or equivalent; some also have shareholder letters, prepared remarks or a
+supplemental workbook (Zscaler's is an xlsx). One deck is listed as not downloaded. Three features
+of this set matter for the adapter:
+
+- **Fiscal calendars are unusual.** Year ends in January (CrowdStrike, SentinelOne, PagerDuty,
+  Samsara, Snowflake) and July (Zscaler, Palo Alto Networks), 52/53-week years (Samsara, Shake
+  Shack) and fiscal years labeled a year ahead of the calendar. The period parser (W3) has to
+  resolve "FY2026" to dates through the company's own fiscal year end and must not guess.
+- **Preliminary and final results for the same quarter** (Shake Shack) are different facts about
+  one period.
+- **Company-defined metrics are the point.** ARR is reported by 9 of the 15, defined differently
+  (constant-currency ARR, ARR including payments fees, "ARR" as quarterly revenue times four), so
+  the definition extraction (W7) matters more than the plan assumed.
+
+## 4. Approach by document type
 
 | Type | Share of the work | Notes |
 |---|---|---|
@@ -86,7 +108,7 @@ The adapter computes `content_sha256` itself.
 Charts and images are out of scope. Scanned documents need OCR and are out of scope for the
 first cut.
 
-## 4. Choosing the parser (task 2.1)
+## 5. Choosing the parser (task 2.1)
 
 Candidates, with what is known:
 
@@ -116,7 +138,7 @@ measure:
 3. Install size, runtime per document, and cost.
 4. Failure modes, written down: merged headers, scale captions, footnote markers.
 
-## 5. How extraction quality will be verified
+## 6. How extraction quality will be verified
 
 Extraction errors poison every downstream number, so this is not optional:
 
@@ -134,7 +156,7 @@ Extraction errors poison every downstream number, so this is not optional:
 Fact-level precision and recall against the verified sample are reported with the benchmark, as a
 separate result from reconciliation accuracy (board task 4.1 asks for both modes).
 
-## 6. Work breakdown
+## 7. Work breakdown
 
 Estimates are engineering days for one person, with test-writing included.
 
@@ -153,16 +175,16 @@ Estimates are engineering days for one person, with test-writing included.
 
 Total about 17-19 days; the MVP (W0 to W6, minimal W7, targeted W8, W9) is about 12-14 days.
 **W1, W2, W3 and W6, about 5.5 days, need no documents and can start immediately**, while the
-document set (D-01) and the licensing question (D-02) are being settled.
+document folders and manifests are being finished and the licensing question (D-02) is settled.
 
-## 7. Schedule reality
+## 8. Schedule reality
 
 The board has the adapter due Oct 17 and the release on Nov 9, 22 days from today. With the
 dependencies above, an honest plan is in [status.md](status.md): the adapter MVP is the critical
 path, fine-tuning (phase 5, already a stretch on the board) does not fit, and the release is
 reachable only if the MVP scope is agreed (D-03) and the document set is chosen this week.
 
-## 8. Risks
+## 9. Risks
 
 | Risk | Effect | Mitigation |
 |---|---|---|

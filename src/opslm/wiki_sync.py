@@ -32,7 +32,7 @@ PAGES: dict[str, str] = {
 }
 # one line per page on the wiki Home, in the order they should appear
 HOME_ENTRIES: dict[str, str] = {
-    "Status": "[[Status]]: where the project stands against the board and the November 9 release",
+    "Status": "[[Status]]: where the project stands against the tracker and the November 30 release",
     "Decisions-for-the-Project-Owner": "[[Decisions for the Project Owner]]: the open questions that need the owner's call",
 }
 

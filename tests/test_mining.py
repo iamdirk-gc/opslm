@@ -274,7 +274,7 @@ def test_cli_on_a_facts_file(synthetic, tmp_path):
     docs.write_text("".join(d.model_dump_json() + "\n" for d in synthetic.documents.values()))
     out, rep = tmp_path / "cands.jsonl", tmp_path / "report.json"
     assert main(["--facts", str(facts), "--documents", str(docs), "--out", str(out),
-                 "--report", str(rep), "--target", "50"]) == 0
+                 "--report", str(rep), "--target", "50", "--hash-splits"]) == 0
     assert len(L.read_candidates(out)) == 50
     report = json.loads(rep.read_text())
     assert report["selected"] == 50 and report["miner_version"] and report["corpus"]["facts"]
@@ -295,3 +295,77 @@ def test_cli_rejects_missing_input_and_unknown_weights(tmp_path):
         main(["--out", str(tmp_path / "x.jsonl")])
     with pytest.raises(SystemExit):
         main(["--synthetic", "10", "--out", str(tmp_path / "x.jsonl"), "--weight", "bogus=1"])
+
+
+# --- splits by company role (owner decision X-24) ----------------------------------------------
+
+
+def test_holdout_companies_go_to_test_only_and_pattern_companies_to_train_and_dev():
+    roles = {f"holdout {i}": "holdout" for i in range(9)} | {f"pattern {i}": "pattern" for i in range(6)}
+    a = M.assign_splits_by_role(roles, seed=0)
+    assert {a[c] for c in roles if c.startswith("holdout")} == {Split.TEST}
+    pattern = [a[c] for c in roles if c.startswith("pattern")]
+    assert set(pattern) == {Split.TRAIN, Split.VALIDATION} and pattern.count(Split.VALIDATION) == 1
+    assert Split.TEST not in pattern
+    assert a == M.assign_splits_by_role(roles, seed=0)  # deterministic
+    others = {M.assign_splits_by_role(roles, seed=s)[c] for s in range(8) for c in roles
+              if c == "pattern 0"}
+    assert len(others) == 2  # the seed changes which pattern company is dev
+
+
+def test_dev_fraction_edge_cases():
+    one = {"only": "pattern", "h": "holdout"}
+    assert M.assign_splits_by_role(one)["only"] == Split.TRAIN  # a lone pattern company is not dev
+    two = {"a": "pattern", "b": "pattern"}
+    assert sorted(v.value for v in M.assign_splits_by_role(two).values()) == ["train", "validation"]
+    assert set(M.assign_splits_by_role(two, dev_fraction=0.0).values()) == {Split.TRAIN}
+    with pytest.raises(M.MiningError, match="unknown roles"):
+        M.assign_splits_by_role({"x": "reserve"})
+
+
+def test_roles_file_is_read_with_normalized_company_names(tmp_path):
+    path = tmp_path / "roles.csv"
+    path.write_text("company,role\nCrowdStrike Holdings, Inc.,Holdout\nDropbox,pattern\n".replace(
+        "Holdings, Inc.", "Holdings Inc."))
+    roles = M.load_roles(path)
+    assert roles == {company_key("CrowdStrike Holdings Inc"): "holdout", "dropbox": "pattern"}
+    path.write_text("company,role\nAcme,reserve\n")
+    with pytest.raises(M.MiningError, match="holdout or pattern"):
+        M.load_roles(path)
+
+
+def _roles_for(corpus, holdout_share=0.5):
+    companies = sorted({corpus.company_of(f) for f in corpus.facts})
+    cut = int(len(companies) * holdout_share)
+    return {c: ("holdout" if i < cut else "pattern") for i, c in enumerate(companies)}
+
+
+def test_mined_pairs_follow_the_roles(synthetic):
+    roles = _roles_for(synthetic)
+    res = M.mine(synthetic, M.MiningConfig(target=120, seed=0, company_roles=roles))
+    assert res.report["config"]["split_rule"] == "roles"
+    for c in res.candidates:
+        company = company_key(c.input.documents[0].company)
+        assert (c.split == Split.TEST) == (roles[company] == "holdout")
+
+
+def test_a_company_without_a_role_is_an_error_not_a_guess(synthetic):
+    roles = _roles_for(synthetic)
+    dropped = min(roles)
+    del roles[dropped]
+    with pytest.raises(M.MiningError, match="no role for these companies"):
+        M.mine(synthetic, M.MiningConfig(target=20, company_roles=roles))
+
+
+def test_cli_with_a_roles_file_and_without(synthetic, tmp_path):
+    facts, docs, roles = tmp_path / "f.jsonl", tmp_path / "d.jsonl", tmp_path / "roles.csv"
+    facts.write_text("".join(f.model_dump_json() + "\n" for f in synthetic.facts))
+    docs.write_text("".join(d.model_dump_json() + "\n" for d in synthetic.documents.values()))
+    r = _roles_for(synthetic)
+    roles.write_text("company,role\n" + "".join(f"{c},{role}\n" for c, role in r.items()))
+    out = tmp_path / "c.jsonl"
+    assert main(["--facts", str(facts), "--documents", str(docs), "--roles", str(roles),
+                 "--out", str(out), "--target", "30"]) == 0
+    assert {c.split for c in L.read_candidates(out)} <= {Split.TRAIN, Split.VALIDATION, Split.TEST}
+    with pytest.raises(SystemExit):  # real facts without roles are refused
+        main(["--facts", str(facts), "--documents", str(docs), "--out", str(out)])

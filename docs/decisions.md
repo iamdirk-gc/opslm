@@ -1,7 +1,7 @@
 # Decisions for the Project Owner
 
 One place for every question that needs the project owner's call, so none is buried in a PR thread.
-Updated 2026-10-18, after reading the wiki's Synthetic Data Requirements page (draft v0.3, Oct 12). IDs are stable: D-01, D-09 and D-11 were decided and moved to the Decided table. Where a default is listed, engineering has already applied it; changing it
+Updated 2026-11-03 with the owner's answers to Part B (D-10, D-12 to D-19), now X-17 to X-25, plus a new decision X-26. IDs are stable: decided items move to the Decided table under a new X- number that records the old D- number. Where a default is listed, engineering has already applied it; changing it
 later costs rework in proportion to how much was built or labeled on top of it.
 
 **How to answer:** reply in a PR or message, and the answer moves to the "Decided" table with the
@@ -26,20 +26,8 @@ much.
 
 ## B. Needed before the labeling session
 
-Changing any of these after labeling starts means relabeling. Defaults are what the guidelines and
-code do today.
-
-| ID | Decision | Default applied | Origin |
-|---|---|---|---|
-| D-10 | Restatements: `conflicting` or something else? | `conflicting` with reason `restatement` | #2 |
-| D-12 | Different currencies, with no conversion available | `insufficient_evidence` | #5 |
-| D-13 | What counts as the same period when labels differ ("FY2025", "2025", "year ended June 30, 2025")? | Exact dates when available; otherwise normalized labels and fiscal year | #6 |
-| D-14 | Unrelated pairs (revenue vs headcount) | Discarded, not labeled | #7 |
-| D-15 | Who settles reviewer disagreements the reviewers cannot settle? | The owner | #8 |
-| D-16 | "Net sales" is an unconditional revenue variant but "Net revenue" is conditional. Intended? And the plan page's example (Revenue vs Net Revenue equivalent) contradicts the metric page. | The metric page wins; guidelines v1.1 follow it. The plan page example still needs rewording. | Board question 2 |
-| D-17 | Adjusted EBITDA, ARR and FCF names are the same concept only when both facts state matching definitions; otherwise insufficient evidence, even for identical names. | Applied in guidelines v1.1 | Board question 3 |
-| D-18 | Flow vs point-in-time pairs (revenue vs ARR): the scope judgment is left undetermined and the concept difference settles the label. | Applied in the generator | Board question 5 |
-| D-19 | The mined set is not representative: the mix of strata is deliberate, so base rates cannot be read off it. Agree to say so in the release write-up. Also the defaults for stratum weights and the 50/10/40 split of companies. | Defaults in [pair-mining.md](pair-mining.md) | [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) |
+All decided on 2026-11-03 (X-17 to X-26 below). Their engineering follow-ups are listed after the
+Decided table.
 
 ## C. Needed before the release
 
@@ -76,3 +64,28 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-14 | Review gate: the owner reviews 50 random generated cases per release and two or more wrong labels blocks it; about 150 reviewed before the synthetic test slice is published | 2026-10-12 | Wiki page |
 | X-15 | First synthetic release: about 2,000 pairs, about 25% per label in training, a realistic mix in the dev set | 2026-10-12 | Wiki page |
 | X-16 | Synthetic cases use the same schema as real cases (v0.2.0), with `source = synthetic` | 2026-10-12 | Wiki page |
+| X-17 | **Restatements** (was D-10). A restated value is stored as its own fact, never overwritten. A pair of the original and the restated value is labeled `conflicting` with reason `restatement`. When resolving, the reconciler selects the latest restated value (resolution status `resolved_with_conflict`, canonical value from the restated fact). | 2026-11-03 | Owner decisions, Part B |
+| X-18 | **Currencies** (was D-12). v1 is USD only. A pair in different currencies, if one ever appears, is `insufficient_evidence` with reason `currency_mismatch`; no conversion. | 2026-11-03 | Owner decisions, Part B |
+| X-19 | **Periods** (was D-13). Compare exact dates when available; otherwise normalized labels and fiscal year; if still unclear, `insufficient_evidence`. Record full period start and end dates (or the as-of date for ARR) whenever the source states them. | 2026-11-03 | Owner decisions, Part B |
+| X-20 | **Unrelated pairs** (revenue vs headcount) are discarded, not labeled (was D-14). | 2026-11-03 | Owner decisions, Part B |
+| X-21 | **Final say on reviewer disagreements:** the project owner (was D-15). Each tiebreak is written up as a rule in the guidelines so it is not argued again. | 2026-11-03 | Owner decisions, Part B |
+| X-22 | **Net sales vs Net revenue** (was D-16). Net sales is a standard revenue variant; Net revenue is equivalent only when the company reports no separate gross revenue line. Intended. | 2026-11-03 | Owner decisions, Part B |
+| X-23 | **Flow vs point-in-time pairs** (revenue vs ARR): the concept difference settles the label (`related_but_different`); scope is left undetermined (was D-18). | 2026-11-03 | Owner decisions, Part B |
+| X-24 | **Mined set and splits** (was D-19). (1) The release write-up states that the holdout's label mix is deliberate and does not reflect real data rooms. (2) The default stratum weights are accepted as a starting point and may be adjusted after the first candidate pool. (3) The 0.5 / 0.1 / 0.4 random split by company is replaced by the company roles decided Oct 12 (X-10): the 9 holdout companies go to test only; the 6 pattern-source companies go to train and dev. | 2026-11-03 | Owner decisions, Part B |
+| X-25 | **Definitions for company-defined metrics** (ARR, adjusted EBITDA) are recorded when facts are built, not looked up at comparison time (was D-17). Each fact carries its definition with an evidence span, taken from the same document or another document of the same company and period (for example a deck's adjusted EBITDA uses the release's reconciliation table). Definitions are stored per company and period, since they change between years. The reconciler compares the attached definitions: match = same concept; differ = `related_but_different` (`definition_mismatch`); none found in the document set = `insufficient_evidence` (`missing_definition`). | 2026-11-03 | Owner decisions, Part B |
+| X-26 | **Preliminary vs final results** (new) are handled like restatements: both stored as separate facts, the pair labeled `conflicting` with new reason `preliminary_vs_final`, and the reconciler selects the final value. | 2026-11-03 | Owner decisions, Part B |
+
+### Follow-ups from the 2026-11-03 decisions
+
+| ID | Engineering follow-up |
+|---|---|
+| X-17 | Schema: record each source document's filing or publication date, and link a restated fact to the fact it supersedes (for example `supersedes_fact_id`), so "latest" is determined from data, not guessed. Resolution scoring in the harness should check that the restated value wins. |
+| X-18 | Extraction and hand-built facts: record currency on every fact; flag any non-USD fact for review. All 15 companies report in USD. |
+| X-19 | Hand-built facts (task 2.5) and the extraction adapter always fill `start`, `end` or `as_of` when the document gives them. |
+| X-20 | None; the pair miner already avoids them. |
+| X-21 | Labeling workflow: adjudication note required on every owner tiebreak. |
+| X-22 | Fix the plan page example that treats Revenue and Net Revenue as equivalent. |
+| X-23 | None; already applied in the generator. |
+| X-24 | Replace the pair miner's hash-based split assignment with role-based assignment. [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) merged on 2026-11-03 with the hash-based default, so this needs a follow-up PR. |
+| X-25 | Hand-built facts (task 2.5) and the extraction adapter fill `stated_definition` and add the defining text as an evidence span; a per-company, per-period definition lookup lets many facts share one definition. Guidelines: a definition may come from a context span in another document of the same company and period. |
+| X-26 | Schema: add reason code `preliminary_vs_final` (allowed as a primary reason for `conflicting`). Resolution: select the final value, using the same supersedes link as X-17. Guidelines: add the rule and the reason. |

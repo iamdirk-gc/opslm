@@ -25,7 +25,7 @@ Example:
 |---|---|
 | Financial statements | FY2025 Revenue: $42.5M |
 | Management presentation | FY2025 Sales: $44.1M |
-| Revenue workbook | FY2025 Net Revenue: $42.5M |
+| Revenue workbook | FY2025 Total revenue: $42.5M |
 | Investor presentation | FY2025 ARR: $39.2M |
 
 Existing extraction tools can identify these values, but they don't necessarily establish whether the underlying business concepts are equivalent, whether differences are explainable, or whether the information conflicts.
@@ -68,12 +68,12 @@ The system preserves original sources, distinguishes semantic equivalence from n
 
 1. **Define the data model and initial task.** Create a canonical business-fact schema covering metric, value, entity, period, units, definition, and source reference. Start with a narrow set of financial and operating metrics.
 2. **Integrate existing extraction tools.** Use an established parser to extract information from PDFs and spreadsheets while retaining source locations and metadata. Avoid building a custom OCR pipeline.
-3. **Create training and evaluation datasets.** Combine public financial documents with synthetic examples of equivalent, conflicting, and ambiguous information. Build a carefully reviewed, held-out evaluation set with scenario-level separation from training data.
+3. **Create training and evaluation datasets.** Combine public financial documents with synthetic examples of equivalent, conflicting, and ambiguous information. Build a carefully reviewed, held-out evaluation set with company-level separation from training data.
 4. **Establish model baselines.** Evaluate deterministic rules, a general-purpose frontier LLM, and an untuned small open-weight model on the same reconciliation task.
 5. **Fine-tune and evaluate a specialized model.** Use supervised fine-tuning and LoRA to train a small open-weight model on business-fact relationships. Compare performance against the baselines.
 6. **Open-source and validate.** Publish the evaluation framework, dataset generation tools, model training pipeline, benchmark results, and a simple end-to-end demonstration. Seek feedback from AI engineering teams working with enterprise documents.
 
-**Initial milestone, November 9:** Deliver a working benchmark with approximately 100-200 reviewed evaluation cases, model comparisons, one fine-tuning experiment, and a documented public repository. Broader taxonomy support and production-grade data-room ingestion are future extensions.
+**Initial milestone, November 30** (replanned from November 9 on November 3): Deliver a working benchmark with approximately 100-200 reviewed evaluation cases, model comparisons, one fine-tuning experiment if the baselines show a gap it could close (a stretch goal; the release is publishable without it), and a documented public repository. Broader taxonomy support and production-grade data-room ingestion are future extensions.
 
 ## 5. Success Criteria & Long-Term Opportunity
 

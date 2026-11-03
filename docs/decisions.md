@@ -1,7 +1,7 @@
 # Decisions for the Project Owner
 
 One place for every question that needs the project owner's call, so none is buried in a PR thread.
-Updated 2026-11-03 with the owner's answers to Part B (D-10, D-12 to D-19), now X-17 to X-25, plus a new decision X-26. IDs are stable: decided items move to the Decided table under a new X- number that records the old D- number. Where a default is listed, engineering has already applied it; changing it
+Updated 2026-11-03 with the owner's answers to Part B (D-10, D-12 to D-19), now X-17 to X-25, a new decision X-26, and the confirmed replan to November 30 (D-08, now X-27). IDs are stable: decided items move to the Decided table under a new X- number that records the old D- number. Where a default is listed, engineering has already applied it; changing it
 later costs rework in proportion to how much was built or labeled on top of it.
 
 **How to answer:** reply in a PR or message, and the answer moves to the "Decided" table with the
@@ -22,7 +22,6 @@ much.
 | D-05 | **Sign conventions (board question).** Should extraction normalize "net loss of 5.2" and "(5.2)" to -5.2, or should the reconciler handle raw signs? | The adapter normalizes (a loss is stored negative) and keeps the printed form in `raw_text`; the reconciler compares signed values. This is already how the schema and the generator behave. | The number parser (W2) |
 | D-06 | **Who verifies extracted facts, and the accuracy bar.** | A hand-checked sample of about 60 facts across the document set; target at least 95% correct (value, scale, period, entity, basis) on the core metrics from tables. Split between the owner and engineering. | Trusting any result that depends on extraction |
 | D-07 | **Success criteria and the fine-tuning threshold (board task 1.5, limitations #9).** What improvement counts as meaningful, in numbers (for example within X macro-F1 points of the frontier model at under Y% of the cost per 1,000 pairs, with false-match rate no worse than Z). | None applied. It must be written before any results exist, and the go/no-go decision D1 depends on it. | Reading any baseline result honestly |
-| D-08 | **The replan.** The owner has moved the release to the end of November. Still to confirm: the exact date and milestone dates, and the scope in [status.md](status.md): extraction MVP as the critical path, fine-tuning decided at D1 once baselines exist and otherwise left out. | Accept. The release stays publishable either way, as the board says. | Everything dated |
 
 ## B. Needed before the labeling session
 
@@ -74,6 +73,7 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-24 | **Mined set and splits** (was D-19). (1) The release write-up states that the holdout's label mix is deliberate and does not reflect real data rooms. (2) The default stratum weights are accepted as a starting point and may be adjusted after the first candidate pool. (3) The 0.5 / 0.1 / 0.4 random split by company is replaced by the company roles decided Oct 12 (X-10): the 9 holdout companies go to test only; the 6 pattern-source companies go to train and dev. | 2026-11-03 | Owner decisions, Part B |
 | X-25 | **Definitions for company-defined metrics** (ARR, adjusted EBITDA) are recorded when facts are built, not looked up at comparison time (was D-17). Each fact carries its definition with an evidence span, taken from the same document or another document of the same company and period (for example a deck's adjusted EBITDA uses the release's reconciliation table). Definitions are stored per company and period, since they change between years. The reconciler compares the attached definitions: match = same concept; differ = `related_but_different` (`definition_mismatch`); none found in the document set = `insufficient_evidence` (`missing_definition`). | 2026-11-03 | Owner decisions, Part B |
 | X-26 | **Preliminary vs final results** (new) are handled like restatements: both stored as separate facts, the pair labeled `conflicting` with new reason `preliminary_vs_final`, and the reconciler selects the final value. | 2026-11-03 | Owner decisions, Part B |
+| X-27 | **The replan** (was D-08). The release moves from November 9 to November 30, 2026, with the milestone dates in the tracker. The extraction adapter is the critical path (due Nov 20); the holdout is built from hand-built facts (task 2.5), so labeling does not wait for the adapter; fine-tuning is decided at D1 once baselines exist and otherwise left out. | 2026-11-03 | Tracker, replanned Nov 3 |
 
 ### Follow-ups from the 2026-11-03 decisions
 
@@ -89,3 +89,4 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-24 | Replace the pair miner's hash-based split assignment with role-based assignment. [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) merged on 2026-11-03 with the hash-based default, so this needs a follow-up PR. |
 | X-25 | Hand-built facts (task 2.5) and the extraction adapter fill `stated_definition` and add the defining text as an evidence span; a per-company, per-period definition lookup lets many facts share one definition. Guidelines: a definition may come from a context span in another document of the same company and period. |
 | X-26 | Schema: add reason code `preliminary_vs_final` (allowed as a primary reason for `conflicting`). Resolution: select the final value, using the same supersedes link as X-17. Guidelines: add the rule and the reason. |
+| X-27 | Plan page and status snapshot use the Nov 30 date and the tracker's milestones. |

@@ -372,7 +372,11 @@ def load_roles(path: str | Path) -> dict[str, str]:
             if not company or role not in (ROLE_HOLDOUT, ROLE_PATTERN):
                 raise MiningError(f"{path} row {n}: need a company and a role of holdout or "
                                   f"pattern, got {company!r} / {role!r}")
-            roles[company_key(company)] = role
+            key = company_key(company)
+            if roles.get(key, role) != role:
+                raise MiningError(f"{path} row {n}: {company!r} is listed as both "
+                                  f"{roles[key]} and {role}")
+            roles[key] = role
     return roles
 
 

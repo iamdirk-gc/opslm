@@ -369,3 +369,12 @@ def test_cli_with_a_roles_file_and_without(synthetic, tmp_path):
     assert {c.split for c in L.read_candidates(out)} <= {Split.TRAIN, Split.VALIDATION, Split.TEST}
     with pytest.raises(SystemExit):  # real facts without roles are refused
         main(["--facts", str(facts), "--documents", str(docs), "--out", str(out)])
+
+
+def test_roles_file_rejects_one_company_with_two_roles(tmp_path):
+    path = tmp_path / "roles.csv"
+    path.write_text('company,role\nAcme Corp,holdout\n"ACME, Inc.",pattern\n')
+    with pytest.raises(M.MiningError, match="both holdout and pattern"):
+        M.load_roles(path)
+    path.write_text("company,role\nAcme Corp,holdout\nACME Inc,holdout\n")
+    assert M.load_roles(path) == {"acme": "holdout"}

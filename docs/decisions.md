@@ -89,7 +89,7 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-19 | Hand-built facts (task 2.5) and the extraction adapter always fill `start`, `end` or `as_of` when the document gives them. |
 | X-20 | None; the pair miner already avoids them. |
 | X-21 | Labeling workflow: adjudication note required on every owner tiebreak. **Done:** the adjudication sheet already rejects a resolution without a `rule_decided`, which becomes the case's `adjudication_note`; the guidelines now say so. |
-| X-22 | Fix the plan page example that treats Revenue and Net Revenue as equivalent. **Done in the repository copy** (`docs/plan.md`); the wiki plan page is the owner's and still has the old example. |
+| X-22 | Fix the plan page example that treats Revenue and Net Revenue as equivalent. **Done:** the repository copy (`docs/plan.md`) and the wiki plan page. |
 | X-23 | None; already applied in the generator. |
 | X-24 | Replace the pair miner's hash-based split assignment with role-based assignment. [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) merged on 2026-11-03 with the hash-based default, so this needed a follow-up PR. **Done:** the miner takes a roles CSV (`--roles`); holdout companies go to test only, pattern companies to train and dev, and a company with no role is an error. |
 | X-25 | Hand-built facts (task 2.5) and the extraction adapter fill `stated_definition` and add the defining text as an evidence span; a per-company, per-period definition lookup lets many facts share one definition. Guidelines: a definition may come from a context span in another document of the same company and period. **Done:** guidelines v1.2. **Open:** the adapter and hand-built facts. |

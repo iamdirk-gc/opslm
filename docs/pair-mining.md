@@ -63,9 +63,18 @@ abstentions in it says nothing about how often they occur in a real data room.
 
 ## Splits
 
-**Planned change:** the project has fixed company roles (9 holdout companies whose pairs belong to
-the test split only, 6 pattern sources that may supply training pairs). The miner currently assigns
-by hash and will take the roles from the manifest instead.
+The project has fixed company roles (9 holdout companies whose pairs belong to the test split only,
+6 pattern sources that may supply training pairs). Pass them as a CSV with columns `company` and
+`role` (`holdout` or `pattern`):
+
+```bash
+python -m opslm.mining_cli --facts facts.jsonl --documents documents.jsonl --roles roles.csv --out candidates.jsonl
+```
+
+Holdout companies go to `test`; pattern companies go to `train` and `validation`
+(`--dev-fraction`, default 0.2, at least one when there are two or more). A company with no role is
+an error. Real facts require `--roles`; `--hash-splits` (and `--synthetic`) keep the older hash
+assignment for dry runs.
 
 Every pair of a company goes to one split, assigned deterministically by company
 (`--fractions train validation test`, default 0.5 / 0.1 / 0.4), so company-level and

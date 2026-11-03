@@ -1,8 +1,7 @@
 # Status: 2026-11-03
 
 Snapshot of where the project stands against the board and the release, which the owner has moved
-from November 9 to the end of November (about 4 weeks out; the exact date is still to be confirmed,
-this plan assumes November 30).
+from November 9 to November 30 (the board replanned on Nov 3; about 4 weeks out).
 Task-level detail is in [board-alignment.md](board-alignment.md); open questions for the project
 owner are in [decisions.md](decisions.md).
 
@@ -46,37 +45,31 @@ owner are in [decisions.md](decisions.md).
 
 ## Where the board stands
 
-Suggested values for the board's Status column. "Done" means built and tested here, still subject
-to the owner's review where noted.
+The owner replanned the board on Nov 3 (release Nov 30, critical path "extraction adapter (2.3) by
+Nov 20", 42 tasks, 5 done). **The board is now the source of truth for task status and dates**; this
+page no longer keeps a copy of its Status column. Two changes in it matter for engineering:
 
-| ID | Suggested status | Note |
+- **Labeling no longer waits for the adapter.** Task 2.5 has the owner and engineering build the
+  holdout facts by hand from the 9 holdout companies, checked against SEC XBRL values. The hand-built
+  facts are both the candidate pool for labeling and the answer key for scoring the adapter later
+  (2.7). The adapter (2.3) is still on the release list, with an accuracy report.
+- **The owner's decisions on the labeling questions are in** (X-17 to X-26, Nov 3), and the
+  guidelines (v1.2) now carry them. Approving them is task 1.3, "the last item blocking labeling".
+
+Engineering-owned tasks, with the board's dates:
+
+| Task | Dates | State |
 |---|---|---|
-| 1.1 | Done | `docs/metric-set-v1.md` and the wiki page |
-| 1.2 | Done | Schema v0.2.0 adopted and merged; validation tightened after review |
-| 1.3 | In progress | Guidelines v1.1 drafted; needs the owner's review and the Part B decisions |
-| 1.4 | Done | License, packaging, layout, CI |
-| 1.5 | In progress | Metrics implemented; the success threshold is undefined (D-07) |
-| 1.6 | Not started | Nine illustrative examples exist; not the owner's hand-labeled seed set |
-| M1 | Not started | Waiting on 1.3 and 1.5 |
-| 2.1 | Not started | Spike planned (section 5 of the scope doc) |
-| 2.2 | In progress | Document set decided Oct 12 (15 companies, roles fixed); per-company folders and `manifest.csv` files are the owner's deliverable |
-| 2.3 | Not started | Scoped; 5.5 days of it can start now |
-| 2.4 | Not started | Needs D-02 |
-| M2 | Not started | Blocked on 2.1 to 2.3 |
-| 3.1 | In progress | Generator v1 exists but does not meet the requirements page (next section); blocked on the coverage grid (D-29) |
-| 3.2 | In progress | Tool built and merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)); waits on extraction output. Still to change: it assigns splits by hash, but the roles are fixed (holdout companies to the test split only) |
-| 3.3 | In progress | Company and document-family separation enforced in code; the rule is not yet written up for real data |
-| 3.4 | Not started | Workflow ready; waits on candidates from real facts |
-| 3.5 | Not started | The generator can produce it; run after M1 so it follows the frozen guidelines |
-| M3 | Not started | Blocked on 3.4 |
-| 4.1 | In progress | Reconciliation-only done; end-to-end mode and difficulty slices missing |
-| 4.2 | In progress | Built; needs the owner's review of the synonym map; no holdout to score on |
-| 4.3 | In progress | Built; never run; needs credentials and a budget (D-24) |
-| 4.4 | In progress | Backend ready; no open-weight model hosted |
-| M4, D1 | Not started | Depend on a holdout and baseline results |
-| 5.1 to 5.4, M5 | Not started | Nothing built; no training spend before D1 |
-| 6.1 | In progress | README and docs exist; no quickstart or architecture overview yet |
-| 6.2 to 6.5, M6 | Not started | No demo, reproduction guide or outreach list |
+| 4.5 Request GPU quota (`opslm-511123`) | Nov 4 | A console action; not requested yet |
+| 2.1 Parser spike on two holdout filings | Nov 4-6 | Needs the document set in the GCS bucket (2.6) |
+| 2.3 Extraction adapter MVP | Nov 4-20 | Scoped; the document-independent layers can start now |
+| 3.6 Draft the synthetic coverage grid | Nov 5-6 | Engineering drafts, the owner marks it up |
+| 3.1 Generator to the requirements page | Nov 6-12 | Waits on the grid; fixes that need no decision can start |
+| 3.2 Mine candidates from the holdout facts | Nov 10-13 | Role-based splits done; waits on 2.5 |
+| 3.5 Generate the training set (about 2,000 pairs) | Nov 12-14 | Waits on 3.1 and the guidelines |
+| 4.1 Finish the harness (resolution scoring, difficulty slices, end-to-end) | Nov 10-22 | Reconciliation-only mode built |
+| 4.4 Host an open-weight model, run the untuned baseline | Nov 12-22 | Backend ready; needs the GPU quota |
+| 6.2 End-to-end demo; 6.4 reproducibility check | Nov 22-29 | After the adapter |
 
 ## The generator against the requirements page
 
@@ -97,26 +90,6 @@ must do. Measured on 800 scenarios (the most it can make):
 | Quality gate: the owner reviews 50 random cases per release | No sampling tool yet (the blind-review audit module covers the comparison) |
 | LLM rephrasing (open) | Not used: templates only. Recommendation in D-30 |
 
-## A realistic plan to the end of November
-
-The board's M2 (Oct 17) and M3 (Oct 24) were missed and the owner has moved the release. This plan
-keeps the board's must-haves for the release (holdout dataset, schema, harness, three baselines,
-evidence-linked outputs, documented results). It assumes November 30 and should be lined up with
-the owner's new milestone dates in the board sheet.
-
-| Week | Work | Needs |
-|---|---|---|
-| Nov 3-6 | Parser spike (W0). Build the document-independent adapter layers (W1, W2, W3, W6). Fix the generator gaps that need no decision (company-name cap, label mix, per-case reproducibility fields); make the miner take company roles from the manifest. The owner finishes document folders and manifests, answers licensing (D-02), and marks up the coverage grid (D-29) | D-02, D-03, D-05, D-29, documents on disk |
-| Nov 9-13 | Adapter on spreadsheets and filing tables (W4, W5) and minimal definitions, basis and status (W7). Extraction verification sample (D-06). First mining run on real facts | Real documents, the owner's time for the sample |
-| Nov 16-20 | Labeling dry run, then the shared overlap, adjudication and guideline revisions; freeze the holdout. Arrange API credentials and a hosted open-weight model | Both people labeling; D-24 |
-| Nov 23-27 | Run the three baselines on the holdout; results write-up; README and quickstart; reproducibility check from a fresh clone. D1 go or no-go on fine-tuning | API credentials, the success threshold (D-07) |
-| Nov 30 | Release | |
-
-This still has no slack: a slip in document choice or in the first extraction results moves the
-holdout, and the labeling week cannot be compressed (two people, one adjudication meeting). The
-fallback, if real pairs arrive late, is to label the human-reviewed synthetic test candidates first
-and release a smaller real holdout with the limitation stated.
-
 ## Risks, in order
 
 1. **No real data yet.** Every quality claim so far is against synthetic data, which the generator's
@@ -133,13 +106,14 @@ and release a smaller real holdout with the limitation stated.
 
 ## Needed from the project owner this week
 
-The exact release date and the new board milestones, D-02 (redistribution), D-03 (extraction
-scope), D-05 (sign normalization), D-07 (success threshold), D-08 (the replan: the date moved, the
-scope question remains), D-29 (the synthetic coverage grid, which the generator is
-waiting on), and a review of guidelines v1.1. The full list is in
+Approve guidelines v1.2 (board 1.3, Nov 4-6), the last item blocking labeling. Mark up the coverage
+grid that engineering drafts (3.6, D-29). Settle D-31 (how a preliminary fact is marked). Write the
+success criteria and headline metric (1.5, D-07, D-20). Decide what may be published (2.4, D-02) and
+the extraction scope (D-03). Confirm sign normalization (D-05). The full list is in
 [decisions.md](decisions.md).
 
-## Nothing is in review
+## Done since the Nov 3 snapshot
 
-The two open PRs from Oct 18 are merged. The next change is the generator and miner work in week one
-of the plan.
+The owner's decisions are recorded and written into the guidelines (v1.2); schema 0.2.1 adds the
+supersedes link, publication date and the `preliminary_vs_final` reason; the pair miner assigns
+splits by company role; the plan page example is fixed in the repository copy.

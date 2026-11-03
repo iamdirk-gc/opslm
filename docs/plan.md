@@ -25,7 +25,7 @@ Example:
 |---|---|
 | Financial statements | FY2025 Revenue: $42.5M |
 | Management presentation | FY2025 Sales: $44.1M |
-| Revenue workbook | FY2025 Net Revenue: $42.5M |
+| Revenue workbook | FY2025 Total revenue: $42.5M |
 | Investor presentation | FY2025 ARR: $39.2M |
 
 Existing extraction tools can identify these values, but they don't necessarily establish whether the underlying business concepts are equivalent, whether differences are explainable, or whether the information conflicts.

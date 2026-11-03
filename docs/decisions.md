@@ -26,8 +26,13 @@ much.
 
 ## B. Needed before the labeling session
 
-All decided on 2026-11-03 (X-17 to X-26 below). Their engineering follow-ups are listed after the
+All decided on 2026-11-03 (X-17 to X-26 below), except one new question that came out of the
+engineering work on them (D-31). Their engineering follow-ups, with status, are listed after the
 Decided table.
+
+| ID | Decision | Recommendation | Blocks |
+|---|---|---|---|
+| D-31 | **How does a fact record that it is preliminary rather than restated?** X-17 and X-26 use two reasons (`restatement`, `preliminary_vs_final`) for pairs linked by `supersedes_fact_id`, but nothing in the data says which applies. | Add `preliminary` as a value of `reporting_status` on the earlier fact (an additive change); a superseded fact marked `preliminary` gives `preliminary_vs_final`, otherwise `restatement`. Until decided, the guidelines say to choose from what the sources say and default to `restatement`. | The reason a labeler or system should give; the generator cannot produce preliminary pairs until then |
 
 ## C. Needed before the release
 
@@ -79,13 +84,13 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 
 | ID | Engineering follow-up |
 |---|---|
-| X-17 | Schema: record each source document's filing or publication date, and link a restated fact to the fact it supersedes (for example `supersedes_fact_id`), so "latest" is determined from data, not guessed. Resolution scoring in the harness should check that the restated value wins. |
+| X-17 | Schema: record each source document's filing or publication date, and link a restated fact to the fact it supersedes (for example `supersedes_fact_id`), so "latest" is determined from data, not guessed. Resolution scoring in the harness should check that the restated value wins. **Done:** schema 0.2.1 has `published_at` and `supersedes_fact_id`, and the generator's restatements use them. **Open:** resolution scoring (board task 4.1). |
 | X-18 | Extraction and hand-built facts: record currency on every fact; flag any non-USD fact for review. All 15 companies report in USD. |
 | X-19 | Hand-built facts (task 2.5) and the extraction adapter always fill `start`, `end` or `as_of` when the document gives them. |
 | X-20 | None; the pair miner already avoids them. |
-| X-21 | Labeling workflow: adjudication note required on every owner tiebreak. |
-| X-22 | Fix the plan page example that treats Revenue and Net Revenue as equivalent. |
+| X-21 | Labeling workflow: adjudication note required on every owner tiebreak. **Done:** the adjudication sheet already rejects a resolution without a `rule_decided`, which becomes the case's `adjudication_note`; the guidelines now say so. |
+| X-22 | Fix the plan page example that treats Revenue and Net Revenue as equivalent. **Done in the repository copy** (`docs/plan.md`); the wiki plan page is the owner's and still has the old example. |
 | X-23 | None; already applied in the generator. |
-| X-24 | Replace the pair miner's hash-based split assignment with role-based assignment. [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) merged on 2026-11-03 with the hash-based default, so this needs a follow-up PR. |
-| X-25 | Hand-built facts (task 2.5) and the extraction adapter fill `stated_definition` and add the defining text as an evidence span; a per-company, per-period definition lookup lets many facts share one definition. Guidelines: a definition may come from a context span in another document of the same company and period. |
-| X-26 | Schema: add reason code `preliminary_vs_final` (allowed as a primary reason for `conflicting`). Resolution: select the final value, using the same supersedes link as X-17. Guidelines: add the rule and the reason. |
+| X-24 | Replace the pair miner's hash-based split assignment with role-based assignment. [PR #9](https://github.com/iamdirk-gc/opslm/pull/9) merged on 2026-11-03 with the hash-based default, so this needed a follow-up PR. **Done:** the miner takes a roles CSV (`--roles`); holdout companies go to test only, pattern companies to train and dev, and a company with no role is an error. |
+| X-25 | Hand-built facts (task 2.5) and the extraction adapter fill `stated_definition` and add the defining text as an evidence span; a per-company, per-period definition lookup lets many facts share one definition. Guidelines: a definition may come from a context span in another document of the same company and period. **Done:** guidelines v1.2. **Open:** the adapter and hand-built facts. |
+| X-26 | Schema: add reason code `preliminary_vs_final` (allowed as a primary reason for `conflicting`). Resolution: select the final value, using the same supersedes link as X-17. Guidelines: add the rule and the reason. **Done:** the reason code and the guidelines rule (v1.2). **Open:** resolution selects the final value, and D-31 (how a preliminary fact is marked). |

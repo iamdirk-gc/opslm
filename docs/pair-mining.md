@@ -63,6 +63,10 @@ abstentions in it says nothing about how often they occur in a real data room.
 
 ## Splits
 
+**Planned change:** the project has fixed company roles (9 holdout companies whose pairs belong to
+the test split only, 6 pattern sources that may supply training pairs). The miner currently assigns
+by hash and will take the roles from the manifest instead.
+
 Every pair of a company goes to one split, assigned deterministically by company
 (`--fractions train validation test`, default 0.5 / 0.1 / 0.4), so company-level and
 document-family leakage cannot occur and the dataset loader's checks hold by construction. Every

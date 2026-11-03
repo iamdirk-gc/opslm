@@ -24,6 +24,8 @@ No number produced so far says anything about real-world performance.
 
 ## Part 1: Decisions for the project owner
 
+> The consolidated, current list is [decisions.md](decisions.md), which also records which of these are decided. The text below is kept for the reasoning behind each item.
+
 Each item has what the engineering side did by default. Defaults can be changed; changes after labeling starts mean re-reviewing cases, so these are best settled **before** the labeling session.
 
 ### Labels and guidelines (most urgent, blocks labeling)
@@ -49,7 +51,7 @@ Each item has what the engineering side did by default. Defaults can be changed;
 ### Data
 
 12. **Public data sources.** Suggested: SEC filings (including XBRL tags) for the public portion, and synthetic cases built around fictional companies. Which companies or sectors? Check each source's terms of use before redistribution.
-13. **No CircleEngage or MagnoliaHealth data.** This is a personal project, so no employer or customer documents, figures or terminology should appear in the data, repo or prompts. Confirm this boundary is understood on both sides.
+13. **No employer or customer data.** This is a personal project, so no documents, figures or terminology from either contributor's employers or customers should appear in the data, repo or prompts. Confirm this boundary is understood on both sides.
 14. **Dataset and model license.** Code is Apache 2.0. The dataset and model weights are separate. Suggested: CC BY 4.0 for the data, Apache 2.0 for weights. The base model's own license may restrict this (some open-weight models do).
 
 ### Models and budget

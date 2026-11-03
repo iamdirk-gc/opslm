@@ -54,7 +54,7 @@ tasks are done and none is overdue.
 | 1.2 | Schema | Done | Oct 13 | Schema v0.2.1 |
 | 1.3 | Review and approve guidelines v1.2 | In progress | Nov 6 | The last item blocking labeling |
 | 1.4 | Repo setup and CI | Done | Oct 12 | |
-| 1.5 | Success criteria in numbers; headline metric | In progress | Nov 6 | D-07, D-20 |
+| 1.5 | Success criteria in numbers; headline metric | Done | Nov 6 | Decided Nov 3 (X-28 to X-32); headline: false-match rate |
 | 1.6 | Hand-label 10 to 15 seed examples from holdout documents | Not started | Nov 8 | Needs 1.3 and 2.5 |
 | 1.7 | Settle the labeling decisions | Done | Nov 5 | X-17 to X-26, decided Nov 3 |
 | M1 | Guidelines, decisions and success criteria locked | Not started | Nov 8 | |
@@ -65,7 +65,7 @@ tasks are done and none is overdue.
 | 2.5 | Hand-built holdout facts, checked against SEC XBRL | Not started | Nov 12 | Candidate pool for labeling and the extraction answer key (D-04) |
 | 2.6 | Upload the document set to the project's private bucket | Not started | Nov 4 | |
 | M2 | Evidence-linked facts for all 15 companies | Not started | Nov 20 | |
-| 2.7 | Score extraction against the hand-built facts | Not started | Nov 22 | D-06: at least 95% on core-metric table facts |
+| 2.7 | Score extraction against the hand-built facts | Not started | Nov 22 | At least 95% correct on the hand-checked sample (X-29) |
 | 3.1 | Generator brought up to the requirements page | In progress | Nov 12 | Gaps below |
 | 3.2 | Mine candidate pairs from the holdout facts | In progress | Nov 13 | Miner and role-based splits built; waits on 2.5 |
 | 3.3 | Split rules for real data | In progress | Nov 7 | Company separation and role-based splits built |
@@ -115,7 +115,7 @@ extraction adapter; the adapter is scored against those same facts.
 
 | Window | Work | Needs |
 |---|---|---|
-| Nov 4-8 | Owner approves guidelines v1.2 and writes the success criteria (M1, Nov 8); parser comparison (2.1); coverage grid (3.6); licensing (2.4); GPU quota request and document upload (Nov 4); seed examples (1.6) | D-02, D-07, D-29 |
+| Nov 4-8 | Owner approves guidelines v1.2 (M1, Nov 8; the success criteria are decided, X-28 to X-32); parser comparison (2.1); coverage grid (3.6); licensing (2.4); GPU quota request and document upload (Nov 4); seed examples (1.6) | D-02, D-07, D-29 |
 | Nov 6-14 | Hand-built holdout facts (2.5, Nov 12); role-based splits and candidate mining (3.2, 3.3); generator to the requirements and the training set (3.1, 3.5); synthetic quality gate (3.7) | X-24 |
 | Nov 13-20 | Label the holdout with overlap and adjudication (3.4); extraction adapter MVP (2.3, M2); holdout frozen (M3) | The owner and engineering both labeling |
 | Nov 20-23 | Score extraction (2.7); harness end-to-end mode (4.1); run the three baselines (4.2 to 4.4, M4); fine-tuning go/no-go (D1) | API credentials, a hosted open-weight model (D-24) |
@@ -140,7 +140,7 @@ reconciliation-only results on the hand-built holdout and state the end-to-end l
 
 ## Needed from the project owner this week
 
-Review and approve guidelines v1.2 (1.3, Nov 6), the success threshold (D-07, Nov 6), the
+Review and approve guidelines v1.2 (1.3, Nov 6), the
 synthetic coverage grid (D-29, Nov 6), redistribution (D-02, Nov 7), extraction scope (D-03) and
 sign normalization (D-05). The full list is in [decisions.md](decisions.md).
 

@@ -74,6 +74,10 @@ jobs:
         run: python -m opslm.eval run --dataset data/examples/guideline_examples.jsonl --system rules --bootstrap 50
       - name: Generate a small synthetic dataset
         run: python -m opslm.datagen --scenarios 60 --seed 0 --out-dir "$RUNNER_TEMP/synthetic"
+      - name: Mine candidate pairs from a synthetic corpus
+        run: >
+          python -m opslm.mining_cli --synthetic 60 --target 20
+          --out "$RUNNER_TEMP/mined.jsonl" --report "$RUNNER_TEMP/mining_report.json"
       - name: Plan a labeling round from the generated test candidates
         run: >
           python -m opslm.labeling_cli plan

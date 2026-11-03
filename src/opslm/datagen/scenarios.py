@@ -14,6 +14,7 @@ import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any
@@ -159,7 +160,8 @@ class Ctx:
              unit: str | None = None, definition: str | None = None,
              basis: AccountingBasis = AccountingBasis.UNKNOWN, excerpt: str | None = "auto",
              show_entity: bool = True, show_period: bool = True,
-             sign_style: str | None = None) -> BusinessFact:
+             sign_style: str | None = None, supersedes: str | None = None,
+             published_at: date | None = None) -> BusinessFact:
         if scale is None or dp is None:
             scale, dp = self.rep(kind, T)
         unit = unit or (self.unit if kind == "currency" else "percent")
@@ -175,7 +177,8 @@ class Ctx:
         quantity = self.quantity(shown, scale, unit, sign_style)
         doc_id = f"{self.scenario_id}-d{self._n}"
         self.docs[doc_id] = SourceDocument(doc_id=doc_id, company=self.company.base,
-                                           document_family=self.scenario_id, doc_type=doc_type)
+                                           document_family=self.scenario_id, doc_type=doc_type,
+                                           published_at=published_at)
         workbook = doc_type.endswith("workbook")
         span = EvidenceSpan(
             span_id=f"{self.scenario_id}-s{self._n}", doc_id=doc_id,
@@ -188,7 +191,8 @@ class Ctx:
         fact = BusinessFact(
             fact_id=f"{self.scenario_id}-f{self._n}", metric_label=metric,
             metric_id=V.metric_id_for(metric), entity=entity, period=period, quantity=quantity,
-            accounting_basis=basis, stated_definition=definition, evidence=[span],
+            accounting_basis=basis, stated_definition=definition, supersedes_fact_id=supersedes,
+            evidence=[span],
             extraction=ExtractionInfo(extractor="synthetic"),
         )
         self.facts[key] = fact
@@ -615,8 +619,9 @@ def sc_restatement(ctx: Ctx) -> tuple[str, list[PairSpec]]:
     names = ctx.names(c, 2)
     T = ctx.true_value(c, min_value=2e6)
     entity, per = ctx.company.entity(ctx.rng), ctx.period(c, False)
+    year_end = ctx.cal.end
     a = ctx.fact("a", metric=names[0], T=T, kind="currency", entity=entity, period=per,
-                 scale=Scale.MILLIONS, dp=1)
+                 scale=Scale.MILLIONS, dp=1, published_at=year_end + timedelta(days=60))
     for _ in range(50):
         new_T = ctx.perturb(T, "currency")
         shown = (new_T / int(Scale.MILLIONS)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
@@ -626,8 +631,10 @@ def sc_restatement(ctx: Ctx) -> tuple[str, list[PairSpec]]:
                              "reclassification of discontinued operations"])
     amt_new = ctx.amount_text(shown, Scale.MILLIONS, ctx.unit)
     amt_old = ctx.amount_text(a.quantity.reported_value, Scale.MILLIONS, ctx.unit)
+    # a restated value is its own fact, published later, linked to the one it supersedes
     ctx.fact("b", metric=names[1], T=new_T, kind="currency", entity=entity, period=per,
-             scale=Scale.MILLIONS, dp=1,
+             scale=Scale.MILLIONS, dp=1, supersedes=a.fact_id,
+             published_at=year_end + timedelta(days=180),
              excerpt=f"{names[1]} for {per.label} was restated to {amt_new} from {amt_old} "
                      f"previously reported, following {reason}.")
     return "restatement", [conflicting(

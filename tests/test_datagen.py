@@ -298,3 +298,19 @@ def test_cases_using_a_held_out_name_are_tagged_so_results_can_be_sliced(big):
         assert uses == ("heldout_name" in c.gold.tags)
     run = evaluate(RulesBaseline(), later, bootstrap_n=0)
     assert run.slices["tag"]["heldout_name"].n == len(tagged)
+
+
+def test_restated_facts_are_separate_facts_linked_to_the_original(big):
+    cases = [c for c in big.train + big.validation if "restatement" in c.gold.tags]
+    assert cases
+    docs = {}
+    for c in cases:
+        a, b = c.input.fact_a, c.input.fact_b
+        old, new = (a, b) if b.supersedes_fact_id == a.fact_id else (b, a)
+        assert new.supersedes_fact_id == old.fact_id and old.supersedes_fact_id is None
+        assert old.fact_id != new.fact_id and old.quantity.value != new.quantity.value
+        docs = {d.doc_id: d for d in c.input.documents}
+        old_pub = docs[old.evidence[0].doc_id].published_at
+        new_pub = docs[new.evidence[0].doc_id].published_at
+        assert old_pub and new_pub and new_pub > old_pub  # "latest" is known from the data
+        assert c.gold.reasons[0] == "restatement" and c.gold.relationship == "conflicting"

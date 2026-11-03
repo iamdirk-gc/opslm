@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from opslm.schema import BusinessFact, PeriodType, Quantity, ReasonCode, Relationship
 
-GUIDELINE_VERSION = "1.1"
+GUIDELINE_VERSION = "1.2"
 
 
 def _half_unit(q: Quantity) -> Decimal:

@@ -16,6 +16,7 @@
         "definition_mismatch",
         "basis_mismatch",
         "restatement",
+        "preliminary_vs_final",
         "value_mismatch",
         "missing_definition",
         "missing_period",

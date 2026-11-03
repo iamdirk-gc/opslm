@@ -41,7 +41,7 @@ out). The release was replanned on Nov 3 from November 9 (X-27). Task-level deta
 | Evaluation harness | Reconciliation-only mode: macro-F1, false-match rate, judgment accuracy, span-level evidence, cost and latency, slices, bootstrap intervals, paired test. Not built: resolution scoring, difficulty slices, end-to-end mode with extraction (4.1) |
 | Synthetic generator (v1, built before the requirements page) | 18 scenario templates over the five v1 metrics, labels checked against the guideline table at build time, held-out vocabulary tagged `heldout_name`. **Does not yet meet the requirements page; gaps below** |
 | Pair miner | Merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)). Blocks by company and metric family, samples by stratum; checked against synthetic gold labels, never run on real facts. Splits follow company roles from a CSV (`--roles`): holdout companies to test only, pattern sources to train and dev (X-24) |
-| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 372 tests |
+| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 373 tests |
 
 ## Tasks in the tracker
 

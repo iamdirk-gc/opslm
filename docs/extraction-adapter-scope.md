@@ -179,7 +179,8 @@ document folders and manifests are being finished and the licensing question (D-
 
 ## 8. Schedule reality
 
-The board has the adapter due Oct 17 and the release on Nov 9, 22 days from today. With the
+The board had the adapter due Oct 17 and the release on Nov 9. The owner has since moved the
+release to the end of November. With the
 dependencies above, an honest plan is in [status.md](status.md): the adapter MVP is the critical
 path, fine-tuning (phase 5, already a stretch on the board) does not fit, and the release is
 reachable only if the MVP scope is agreed (D-03) and the document set is chosen this week.

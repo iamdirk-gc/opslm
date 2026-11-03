@@ -11,14 +11,14 @@ out). The release was replanned on Nov 3 from November 9 (X-27). Task-level deta
   workflow, rules and LLM baselines, harness, synthetic generator, pair miner and CI all exist.
   What does not exist is the extraction adapter or any hand-built holdout facts, so nothing has
   touched a real document yet.
-- **Since the Oct 18 snapshot the repository has been quiet.** The only changes were merging
-  the pair miner and the scope, decisions and status docs. None of the Oct 19 to Nov 3 work in
-  the old plan (parser spike, adapter layers, generator fixes) is in the repository, so the
-  engineering position is the Oct 18 one with 27 days left instead of 22.
+- **Between Oct 18 and Nov 3 the repository was quiet**: only the pair miner and the scope,
+  decisions and status docs merged. The parser spike, adapter layers and generator fixes are not
+  in the repository, so the engineering position is the Oct 18 one with 27 days left instead of
+  22. The Nov 3 decisions are now built in (schema 0.2.1, role-based splits, guidelines v1.2).
 - **The labeling decisions are settled.** The owner answered all of Part B on Nov 3 (X-17 to
   X-26): restatements and preliminary results are separate facts and the latest value wins; v1 is
   USD only; full period dates are recorded; definitions are attached when facts are built; splits
-  follow the company roles. What remains before labeling is the owner's review of guidelines v1.1
+  follow the company roles. What remains before labeling is the owner's review of guidelines v1.2
   (1.3) and the success criteria (1.5).
 - **The extraction adapter (2.3) is the critical path**, due Nov 20. It is scoped in
   [extraction-adapter-scope.md](extraction-adapter-scope.md): about 12 to 14 engineering days for
@@ -33,15 +33,15 @@ out). The release was replanned on Nov 3 from November 9 (X-27). Task-level deta
 
 | Area | State |
 |---|---|
-| Schema v0.2.0 | Merged; facts with evidence spans, task input and output, gold labels; JSON Schemas checked in and verified in CI at their recorded pydantic version. Not yet: document dates and the supersedes link for restatements and preliminary results (X-17, X-26) |
-| Labeling guidelines | v1.1, a draft awaiting the owner's review (1.3); the Nov 3 decisions still need to be written into it |
+| Schema v0.2.1 | Facts with evidence spans, task input and output, gold labels; JSON Schemas checked in and verified in CI at their recorded pydantic version. 0.2.1 adds the supersedes link, publication date and `preliminary_vs_final` (X-17, X-26) |
+| Labeling guidelines | v1.2, a draft awaiting the owner's review (1.3); it carries the Nov 3 decisions (changes listed at its end) |
 | Dataset loader | Leakage checks by company, document family, fact and pair |
 | Labeling workflow | Spreadsheet export, validated import, agreement, adjudication, finalize; never used by two people yet |
 | Systems | Rules baseline (covers every metric-page variant; abstains on company-defined metrics without definitions); provider-agnostic LLM system (Anthropic, OpenAI-compatible, Vertex Gemini), never run against a real model |
 | Evaluation harness | Reconciliation-only mode: macro-F1, false-match rate, judgment accuracy, span-level evidence, cost and latency, slices, bootstrap intervals, paired test. Not built: resolution scoring, difficulty slices, end-to-end mode with extraction (4.1) |
 | Synthetic generator (v1, built before the requirements page) | 18 scenario templates over the five v1 metrics, labels checked against the guideline table at build time, held-out vocabulary tagged `heldout_name`. **Does not yet meet the requirements page; gaps below** |
-| Pair miner | Merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)). Blocks by company and metric family, samples by stratum; checked against synthetic gold labels, never run on real facts. **Still assigns splits by hash; X-24 requires the company roles** (holdout companies to test only, pattern sources to train and dev) |
-| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 358 tests |
+| Pair miner | Merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)). Blocks by company and metric family, samples by stratum; checked against synthetic gold labels, never run on real facts. Splits follow company roles from a CSV (`--roles`): holdout companies to test only, pattern sources to train and dev (X-24) |
+| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 372 tests |
 
 ## Tasks in the tracker
 
@@ -51,8 +51,8 @@ tasks are done and none is overdue.
 | ID | Task | Status | Due | Note |
 |---|---|---|---|---|
 | 1.1 | v1 metric set | Done | Oct 12 | `docs/metric-set-v1.md` and the wiki page |
-| 1.2 | Schema | Done | Oct 13 | Schema v0.2.0 |
-| 1.3 | Review and approve guidelines v1.1 | In progress | Nov 6 | The last item blocking labeling |
+| 1.2 | Schema | Done | Oct 13 | Schema v0.2.1 |
+| 1.3 | Review and approve guidelines v1.2 | In progress | Nov 6 | The last item blocking labeling |
 | 1.4 | Repo setup and CI | Done | Oct 12 | |
 | 1.5 | Success criteria in numbers; headline metric | In progress | Nov 6 | D-07, D-20 |
 | 1.6 | Hand-label 10 to 15 seed examples from holdout documents | Not started | Nov 8 | Needs 1.3 and 2.5 |
@@ -67,8 +67,8 @@ tasks are done and none is overdue.
 | M2 | Evidence-linked facts for all 15 companies | Not started | Nov 20 | |
 | 2.7 | Score extraction against the hand-built facts | Not started | Nov 22 | D-06: at least 95% on core-metric table facts |
 | 3.1 | Generator brought up to the requirements page | In progress | Nov 12 | Gaps below |
-| 3.2 | Mine candidate pairs from the holdout facts | In progress | Nov 13 | Miner merged; role-based splits first (X-24) |
-| 3.3 | Split rules for real data | In progress | Nov 7 | Company separation enforced; roles not yet |
+| 3.2 | Mine candidate pairs from the holdout facts | In progress | Nov 13 | Miner and role-based splits built; waits on 2.5 |
+| 3.3 | Split rules for real data | In progress | Nov 7 | Company separation and role-based splits built |
 | 3.4 | Label 150 to 200 holdout cases with overlap and adjudication | Not started | Nov 20 | About 8 to 12 hours of labeling |
 | 3.5 | Generate the training set (about 2,000 pairs) | Not started | Nov 14 | About 25% per label |
 | 3.6 | Mark up the synthetic coverage grid | Not started | Nov 6 | D-29 |
@@ -115,7 +115,7 @@ extraction adapter; the adapter is scored against those same facts.
 
 | Window | Work | Needs |
 |---|---|---|
-| Nov 4-8 | Owner approves guidelines v1.1 and writes the success criteria (M1, Nov 8); parser comparison (2.1); coverage grid (3.6); licensing (2.4); GPU quota request and document upload (Nov 4); seed examples (1.6) | D-02, D-07, D-29 |
+| Nov 4-8 | Owner approves guidelines v1.2 and writes the success criteria (M1, Nov 8); parser comparison (2.1); coverage grid (3.6); licensing (2.4); GPU quota request and document upload (Nov 4); seed examples (1.6) | D-02, D-07, D-29 |
 | Nov 6-14 | Hand-built holdout facts (2.5, Nov 12); role-based splits and candidate mining (3.2, 3.3); generator to the requirements and the training set (3.1, 3.5); synthetic quality gate (3.7) | X-24 |
 | Nov 13-20 | Label the holdout with overlap and adjudication (3.4); extraction adapter MVP (2.3, M2); holdout frozen (M3) | The owner and engineering both labeling |
 | Nov 20-23 | Score extraction (2.7); harness end-to-end mode (4.1); run the three baselines (4.2 to 4.4, M4); fine-tuning go/no-go (D1) | API credentials, a hosted open-weight model (D-24) |
@@ -140,10 +140,13 @@ reconciliation-only results on the hand-built holdout and state the end-to-end l
 
 ## Needed from the project owner this week
 
-Review and approve guidelines v1.1 (1.3, Nov 6), the success threshold (D-07, Nov 6), the
+Review and approve guidelines v1.2 (1.3, Nov 6), the success threshold (D-07, Nov 6), the
 synthetic coverage grid (D-29, Nov 6), redistribution (D-02, Nov 7), extraction scope (D-03) and
 sign normalization (D-05). The full list is in [decisions.md](decisions.md).
 
-## In review now
+## Done since the Nov 3 snapshot
 
-This snapshot, lined up with the tracker (task IDs, due dates and the Nov 30 release, X-27).
+The owner's decisions are written into the guidelines (v1.2); schema 0.2.1 adds the supersedes
+link, publication date and `preliminary_vs_final`; the pair miner assigns splits by company role;
+the plan page example is fixed in the repository copy (the wiki copy is the owner's). In review:
+[PR #13](https://github.com/iamdirk-gc/opslm/pull/13).

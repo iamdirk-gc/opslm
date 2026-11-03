@@ -150,6 +150,7 @@
         "definition_mismatch",
         "basis_mismatch",
         "restatement",
+        "preliminary_vs_final",
         "value_mismatch",
         "missing_definition",
         "missing_period",
@@ -280,7 +281,7 @@
       "default": null
     },
     "schema_version": {
-      "default": "0.2.0",
+      "default": "0.2.1",
       "title": "Schema Version",
       "type": "string"
     },

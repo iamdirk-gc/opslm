@@ -377,3 +377,51 @@ def test_reasons_problem_message_names_the_valid_choices():
     assert "value_mismatch" in msg and "restatement" in msg
     assert reasons_problem("conflicting", ["value_mismatch", "synonym", "missing_period"]) is None
     assert reasons_problem("equivalent", []) == "at least one reason is required"
+
+
+# --- restated and preliminary values (owner decisions X-17 and X-26) ----------------------------
+
+
+def test_a_restated_fact_links_to_the_fact_it_supersedes():
+    original = BusinessFact(**REVENUE_10K)
+    restated = BusinessFact(**{**REVENUE_10K, "fact_id": "f9", "supersedes_fact_id": "f1"})
+    assert original.supersedes_fact_id is None and restated.supersedes_fact_id == "f1"
+    assert BusinessFact.model_validate_json(restated.model_dump_json()) == restated
+
+
+def test_a_fact_cannot_supersede_itself():
+    with pytest.raises(ValidationError, match="supersede itself"):
+        BusinessFact(**{**REVENUE_10K, "supersedes_fact_id": "f1"})
+
+
+def test_documents_record_when_they_were_published():
+    from datetime import date
+
+    from opslm.schema import SourceDocument
+
+    doc = SourceDocument(doc_id="d", company="Acme", document_family="acme-fy2025",
+                         doc_type="10-K", published_at=date(2026, 2, 27))
+    assert SourceDocument.model_validate_json(doc.model_dump_json()).published_at == date(2026, 2, 27)
+    assert SourceDocument(doc_id="d", company="Acme", document_family="f", doc_type="x").published_at is None
+
+
+def test_preliminary_vs_final_is_a_conflict_reason_only():
+    g = gold("c1", "conflicting", True, True, reasons=("preliminary_vs_final", "value_mismatch"))
+    assert g.reasons[0] == "preliminary_vs_final"
+    with pytest.raises(ValidationError, match="reason"):
+        gold("c1", "equivalent", True, True, reasons=("preliminary_vs_final",))
+    with pytest.raises(ValidationError, match="reason"):
+        gold("c1", "related_but_different", False, True, reasons=("preliminary_vs_final",))
+
+
+def test_the_labeling_sheet_offers_the_new_reason():
+    from opslm import labeling
+
+    assert "preliminary_vs_final" in labeling.REASONS
+    assert "preliminary_vs_final" in labeling.DROPDOWNS["primary_reason"]
+
+
+def test_schema_version_records_the_additive_change():
+    from opslm.schema import SCHEMA_VERSION
+
+    assert SCHEMA_VERSION == "0.2.1"

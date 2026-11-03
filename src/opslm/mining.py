@@ -23,13 +23,14 @@ it was picked, not what its label is: humans still decide that.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import itertools
 import json
 import math
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -322,6 +323,10 @@ class MiningConfig:
     max_fact_reuse: int = 3
     cross_document_only: bool = True
     source: str = "real"
+    # company -> role ("holdout" or "pattern"). When set, splits follow the roles and
+    # ``fractions`` is ignored; companies missing from it are an error, never guessed.
+    company_roles: dict[str, str] | None = None
+    dev_fraction: float = 0.2  # share of pattern-source companies that go to validation
 
 
 def assign_splits(companies: Sequence[str], fractions: Sequence[float], seed: int) -> dict[str, Split]:
@@ -346,6 +351,51 @@ def assign_splits(companies: Sequence[str], fractions: Sequence[float], seed: in
         for company in order[start:start + count]:
             out[company] = split
         start += count
+    return out
+
+
+ROLE_HOLDOUT, ROLE_PATTERN = "holdout", "pattern"
+
+
+class MiningError(ValueError):
+    """The mining inputs are inconsistent (for example a company with no role)."""
+
+
+def load_roles(path: str | Path) -> dict[str, str]:
+    """Read company roles from a CSV with columns ``company`` and ``role`` (holdout or pattern).
+
+    Keys are normalized with ``company_key`` so 'Acme Corp.' and 'ACME, Inc.' are one company."""
+    roles: dict[str, str] = {}
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        for n, row in enumerate(csv.DictReader(fh), start=2):
+            company, role = (row.get("company") or "").strip(), (row.get("role") or "").strip().lower()
+            if not company or role not in (ROLE_HOLDOUT, ROLE_PATTERN):
+                raise MiningError(f"{path} row {n}: need a company and a role of holdout or "
+                                  f"pattern, got {company!r} / {role!r}")
+            key = company_key(company)
+            if roles.get(key, role) != role:
+                raise MiningError(f"{path} row {n}: {company!r} is listed as both "
+                                  f"{roles[key]} and {role}")
+            roles[key] = role
+    return roles
+
+
+def assign_splits_by_role(roles: Mapping[str, str], *, dev_fraction: float = 0.2,
+                          seed: int = 0) -> dict[str, Split]:
+    """Holdout companies go to the test split only. Pattern-source companies go to train and
+    validation (dev); at least one goes to validation when there are two or more and a non-zero
+    fraction is asked for. Deterministic for a seed, and independent of which companies a given
+    corpus happens to contain."""
+    bad = {r for r in roles.values()} - {ROLE_HOLDOUT, ROLE_PATTERN}
+    if bad:
+        raise MiningError(f"unknown roles: {sorted(bad)}")
+    out = {c: Split.TEST for c, r in roles.items() if r == ROLE_HOLDOUT}
+    pattern = sorted((c for c, r in roles.items() if r == ROLE_PATTERN), key=lambda c: _h(seed, c))
+    n_dev = round(len(pattern) * dev_fraction)
+    if dev_fraction > 0 and len(pattern) >= 2:
+        n_dev = max(1, n_dev)
+    for i, company in enumerate(pattern):
+        out[company] = Split.VALIDATION if i < n_dev else Split.TRAIN
     return out
 
 
@@ -432,7 +482,14 @@ def mine(corpus: Corpus, config: MiningConfig | None = None) -> MiningResult:
     pairs = enumerate_pairs(corpus, cross_document_only=config.cross_document_only)
     chosen, stats = select_pairs(pairs, config)
     companies = sorted({corpus.company_of(f) for f in corpus.facts})
-    splits = assign_splits(companies, config.fractions, config.seed)
+    if config.company_roles is not None:
+        missing = [c for c in companies if c not in config.company_roles]
+        if missing:
+            raise MiningError(f"no role for these companies (add them to the roles file): {missing}")
+        splits = assign_splits_by_role(config.company_roles, dev_fraction=config.dev_fraction,
+                                       seed=config.seed)
+    else:
+        splits = assign_splits(companies, config.fractions, config.seed)
     candidates = [to_candidate(p, corpus, splits[p.company], config) for p in chosen]
     report = {
         "miner_version": MINER_VERSION,
@@ -440,6 +497,8 @@ def mine(corpus: Corpus, config: MiningConfig | None = None) -> MiningResult:
             "target": config.target, "seed": config.seed, "fractions": list(config.fractions),
             "max_company_share": config.max_company_share, "max_fact_reuse": config.max_fact_reuse,
             "cross_document_only": config.cross_document_only, "source": config.source,
+            "split_rule": "roles" if config.company_roles is not None else "hash",
+            "dev_fraction": config.dev_fraction,
         },
         "corpus": {"facts": len(corpus.facts), "documents": len(corpus.documents),
                    "companies": len(companies)},

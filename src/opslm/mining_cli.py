@@ -12,6 +12,7 @@ from opslm.mining import (
     MiningConfig,
     corpus_from_cases,
     load_corpus,
+    load_roles,
     mine,
     write_report,
 )
@@ -29,8 +30,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--report", help="mining report JSON to write")
     p.add_argument("--target", type=int, default=200, help="candidate pairs to select")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--roles", help="CSV with columns company and role (holdout or pattern); holdout "
+                                   "companies go to the test split only, pattern companies to train and dev")
+    p.add_argument("--dev-fraction", type=float, default=0.2,
+                   help="with --roles: share of pattern companies that go to validation")
+    p.add_argument("--hash-splits", action="store_true",
+                   help="assign splits by hash of the company name instead of by role (dry runs)")
     p.add_argument("--fractions", type=float, nargs=3, default=(0.5, 0.1, 0.4),
-                   metavar=("TRAIN", "VAL", "TEST"), help="share of companies per split")
+                   metavar=("TRAIN", "VAL", "TEST"), help="with --hash-splits: share of companies per split")
     p.add_argument("--max-company-share", type=float, default=0.25)
     p.add_argument("--max-fact-reuse", type=int, default=3)
     p.add_argument("--allow-same-document", action="store_true",
@@ -51,6 +58,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         p.error("give --facts and --documents, or --synthetic N")
 
+    roles = None
+    if args.roles:
+        roles = load_roles(args.roles)
+    elif not args.synthetic and not args.hash_splits:
+        p.error("real facts need --roles (company roles decide the splits); use --hash-splits only "
+                "for a dry run")
     weights = dict(DEFAULT_WEIGHTS)
     for item in args.weight:
         name, _, value = item.partition("=")
@@ -60,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     config = MiningConfig(
         target=args.target, seed=args.seed, fractions=tuple(args.fractions), weights=weights,
         max_company_share=args.max_company_share, max_fact_reuse=args.max_fact_reuse,
-        cross_document_only=not args.allow_same_document,
+        cross_document_only=not args.allow_same_document, company_roles=roles,
+        dev_fraction=args.dev_fraction,
         source=args.source or ("synthetic" if args.synthetic else "real"),
     )
     result = mine(corpus, config)

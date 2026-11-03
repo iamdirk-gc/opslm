@@ -1,6 +1,6 @@
-# Labeling Guidelines (v1.1, draft for owner review)
+# Labeling Guidelines (v1.2, draft for owner approval)
 
-**v1.1 incorporates the metric definitions on the project board (task 1.1); the changes from v1.0 are listed at the end and need the project owner's sign-off.**
+**v1.2 adds the owner's November 3 decisions (X-17 to X-26 in [decisions.md](decisions.md)) to v1.1. The changes from v1.1 and v1.0 are listed at the end and need the project owner's approval (board task 1.3).**
 
 These rules define the gold labels for OpsLM evaluation cases. Two reviewers must reach the same label from the same pair by following them. Any change to the rules bumps the version (`GUIDELINE_VERSION` in `src/opslm/labels.py`) and cases labeled under the old version are re-reviewed.
 
@@ -41,7 +41,7 @@ This table is implemented in `derive_label`. If you disagree with it for a case,
 
 - **Standard naming variants are the same concept** unless a qualifier or definition on either fact signals a difference. The variants for the v1 metrics are in [metric-set-v1.md](metric-set-v1.md) (for example Revenue, Total revenue, Net sales, Sales and Turnover; Net income and Net earnings).
 - **"Net revenue" is not a free variant of revenue.** It is the same concept only when a definition shows the company reports no separate gross revenue line. Without that, the judgment is `cannot_tell`.
-- **Company-defined metrics** (ARR, Adjusted EBITDA) mean what each company defines them to mean. Same concept only if **both** facts state definitions (or adjustments) that match. Both state definitions that differ: different concept. A definition missing on either fact: `cannot_tell`, even when the names are identical.
+- **Company-defined metrics** (ARR, Adjusted EBITDA) mean what each company defines them to mean. A definition is recorded with each fact when the fact is built, with an evidence span, **per company and period** (definitions change between years). It may come from another document of the same company and period (for example a deck's Adjusted EBITDA uses the earnings release's reconciliation table); that span is then one of the fact's evidence spans. Same concept only if **both** facts carry definitions that match. Definitions that differ: different concept (`definition_mismatch`). No definition found anywhere in the document set for either fact: `cannot_tell` (`missing_definition`), even when the names are identical.
 - **Different concept** when either fact carries a qualifier or definition that changes meaning: GAAP vs adjusted or non-GAAP, gross vs net where stated, recognized revenue vs a run-rate or contract measure (ARR, bookings, billings, backlog), EBITDA vs Adjusted EBITDA, pro forma vs reported, a percentage vs the same measure in currency (gross margin vs gross profit, Adjusted EBITDA vs Adjusted EBITDA margin), net income attributable to the company vs including noncontrolling interests.
 - **Cannot tell** when the metric names are not standard variants and no definition is provided, for example "Core Revenue" vs "Revenue" with no definition for Core.
 - Different concept never depends on the numbers. Two different metrics with the same value are still `related_but_different`.
@@ -49,7 +49,7 @@ This table is implemented in `derive_label`. If you disagree with it for a case,
 ### 2. Same scope
 
 - **Entity:** the same entity, or explicitly the same consolidation basis. A subsidiary vs its parent is a different scope.
-- **Period:** the same period. For point-in-time metrics (ARR) the period is the as-of date, and different as-of dates (year end vs quarter end vs a deck date) are different periods. Labels like "FY2025" are the same only if the dates match or the periods are plainly the same. A fiscal year ending June and a calendar year are different periods. Quarter vs full year is different. LTM vs fiscal year is different.
+- **Period:** the same period. **How to decide (owner decision X-19):** compare the exact start and end dates (or the as-of date) when the source states them; otherwise compare the normalized labels and the fiscal year; if it is still unclear, the judgment is `cannot tell`. For point-in-time metrics (ARR) the period is the as-of date, and different as-of dates (year end vs quarter end vs a deck date) are different periods. Labels like "FY2025" are the same only if the dates match or the periods are plainly the same. A fiscal year ending June and a calendar year are different periods. Quarter vs full year is different. LTM vs fiscal year is different.
 - **Cannot tell** if the entity or period is missing on either fact and its evidence text does not state it.
 
 ### 3. Values agree
@@ -58,9 +58,15 @@ Computed by `values_agree`, not judged by eye:
 
 - Scale is applied first (42.5 in millions equals 42,500 in thousands).
 - Values agree if they differ by no more than the rounding implied by the coarser reported precision. 42.5M agrees with 42,540,000 but not with 42,700,000.
-- Different units or currencies are **not comparable** (no currency conversion), which gives `insufficient_evidence`.
+- Different units or currencies are **not comparable** (no currency conversion), which gives `insufficient_evidence`. v1 covers USD only (all 15 companies report in USD); a pair in different currencies, if one ever appears, is `insufficient_evidence` with reason `currency_mismatch` (owner decision X-18).
 - A scale error (42.5 reported in units vs 42.5 in millions) is a disagreement, not a match.
 - Signs are compared as recorded. A loss is a negative value, so "Net loss of $5.2M" and "Net income (loss): (5.2)" agree only if both are recorded as -5.2. Whether the extraction step must normalize sign conventions is an open question (see limitations).
+
+### Restated and preliminary values
+
+(Owner decisions X-17 and X-26.) A restated value is stored as its **own fact** and never overwrites the original. The restated fact links to the one it replaces (`supersedes_fact_id`), and the source documents' publication dates show which is later. A pair of the original and the restated value is `conflicting` with reason `restatement`. A preliminary result and the final result for the same period are handled the same way, with reason `preliminary_vs_final`. When resolving, the reconciler selects the **latest** restated or final value (resolution status `resolved_with_conflict`, canonical value from that fact).
+
+Use the reason that matches what the sources say. If they do not say which applies, label `restatement` and note it in the rationale (an engineering proposal for the owner to confirm; see D-31).
 
 ## Principles
 
@@ -87,7 +93,8 @@ Computed by `values_agree`, not judged by eye:
 | `entity_mismatch` | Entity, segment or consolidation basis differs |
 | `definition_mismatch` | Concepts differ by definition or adjustments (ARR vs revenue, EBITDA vs Adjusted EBITDA) |
 | `basis_mismatch` | GAAP vs non-GAAP, where only the accounting basis differs |
-| `restatement` | One source restates the other, and the evidence shows it |
+| `restatement` | One source restates the other: a separate fact that supersedes the original, and the evidence shows it |
+| `preliminary_vs_final` | A preliminary result and the final result for the same period: separate facts, the final one supersedes |
 | `value_mismatch` | Same concept and scope, values differ, nothing explains it |
 | `missing_definition` | A definition needed to judge the concept is not stated |
 | `missing_period` | A period needed to judge the scope is not stated |
@@ -122,6 +129,7 @@ More cases:
 | Adjusted EBITDA $8.0M, adjustments stated | Adj. EBITDA $8.4M, same adjustments stated | `conflicting` | `value_mismatch` |
 | ARR $39.2M as of Dec 31 | ARR $37.0M as of Sep 30 | `related_but_different` | `as_of_mismatch` (different as-of dates) |
 | Revenue $42.5M in Q3 deck | Revenue $43.1M, note: "restated for ASC 606 adoption" | `conflicting` | `restatement`, `value_mismatch` |
+| Revenue $42.5M in the Q4 earnings release (preliminary) | Revenue $42.1M in the 10-K (final) | `conflicting` | `preliminary_vs_final`, `value_mismatch` |
 
 ## Review process
 
@@ -130,7 +138,7 @@ The mechanics (sheets, commands, import checks) are in [labeling-workflow.md](la
 1. Each reviewer labels independently, without seeing the other's answers.
 2. Each reviewer labels their own batch (about 75 cases) **plus a shared overlap batch of about 30 cases** that both label.
 3. Compute agreement on the overlap (Cohen's kappa on the four labels, and on the same-concept judgment alone). Target kappa of at least 0.7.
-4. Review every disagreement together, decide the correct label, and **write down the rule** that settled it. If the rule is not already in this document, add it and bump the version.
+4. Review every disagreement together. **The project owner has the final say** (owner decision X-21). Decide the correct label and **write down the rule** that settled it: add it to this document (bumping the version) and record it in the case's `adjudication_note` so it is not argued again.
 5. Only after the overlap is reconciled, finish the individual batches. Keep the shared overlap cases in the final test set with the reconciled label.
 6. A finalized case records who labeled it (`labeled_by`), who confirmed it (`reviewed_by`: the second reviewer on the overlap, or `adjudicated`), and the rule that settled any disagreement (`adjudication_note`).
 
@@ -138,8 +146,18 @@ Cases labeled by the generator (`labeled_by: generator`) can be used for trainin
 
 ## Open questions
 
-- Is a restatement `conflicting` or `related_but_different`? v1.0 treats it as `conflicting` with reason `restatement`, since the same fact has two values. Revisit if reviewers disagree.
+- How a fact records that it is preliminary rather than restated (D-31). Until decided, the supersedes link is the only marker and the reason is chosen from what the sources say.
 - How to treat facts that carry an explicit tolerance or "approximately" qualifier. Not handled in v1.0.
+
+## Changes from v1.1 (for owner approval)
+
+1. Restatements are separate facts linked by `supersedes_fact_id`; the pair is `conflicting` with `restatement`, and resolution selects the latest value (X-17).
+2. New reason `preliminary_vs_final`, handled like restatements (X-26). The default of `restatement` when the sources do not say is an engineering proposal.
+3. Currencies: v1 is USD only; any other currency is `insufficient_evidence` (X-18).
+4. Period matching order: exact dates, then normalized labels and fiscal year, else cannot tell (X-19).
+5. Definitions for company-defined metrics are recorded per company and period with an evidence span, and may come from another document of the same company and period (X-25).
+6. The owner has the final say on disagreements, and every tiebreak is written up as a rule (X-21).
+7. Net sales is a standard revenue variant and Net revenue is conditional: confirmed, no text change (X-22). Unrelated pairs are discarded: confirmed (X-20). Flow vs point-in-time pairs: confirmed (X-23).
 
 ## Changes from v1.0 (for owner review)
 

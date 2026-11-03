@@ -34,7 +34,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.2.1"  # 0.2.1 (additive): supersedes_fact_id, published_at, preliminary_vs_final
 
 
 class _Model(BaseModel):
@@ -136,6 +136,7 @@ class ReasonCode(str, Enum):
     DEFINITION_MISMATCH = "definition_mismatch"
     BASIS_MISMATCH = "basis_mismatch"      # GAAP vs non-GAAP
     RESTATEMENT = "restatement"
+    PRELIMINARY_VS_FINAL = "preliminary_vs_final"  # same fact, preliminary then final figure
     VALUE_MISMATCH = "value_mismatch"      # same concept, different number
     MISSING_DEFINITION = "missing_definition"
     MISSING_PERIOD = "missing_period"
@@ -148,7 +149,7 @@ class ReasonCode(str, Enum):
 # combine causes (concept undeterminable and periods differ; a conflict between two synonyms).
 PRIMARY_REASONS: dict[str, frozenset[str]] = {
     "equivalent": frozenset({"exact_match", "synonym", "rounding", "unit_scale", "sign_convention"}),
-    "conflicting": frozenset({"value_mismatch", "restatement"}),
+    "conflicting": frozenset({"value_mismatch", "restatement", "preliminary_vs_final"}),
     "related_but_different": frozenset({
         "definition_mismatch", "basis_mismatch", "percent_vs_amount", "period_mismatch",
         "as_of_mismatch", "entity_mismatch"}),
@@ -201,6 +202,10 @@ class SourceDocument(_Model):
     title: str | None = None
     source_url: str | None = None
     retrieved_at: datetime | None = None
+    published_at: date | None = Field(
+        default=None,
+        description="Date the document was filed or published. Used to tell which of two "
+                    "restated or preliminary figures is the later one.")
     content_sha256: str | None = Field(default=None, description="Hash of the exact file parsed.")
     license_note: str | None = Field(
         default=None, description="Redistribution terms or restriction (task 2.4).")
@@ -330,8 +335,18 @@ class BusinessFact(_Model):
     reporting_status: ReportingStatus = ReportingStatus.UNKNOWN
     stated_definition: str | None = Field(
         default=None, description="Definition text if the document gives one. None means not stated.")
+    supersedes_fact_id: str | None = Field(
+        default=None,
+        description="The earlier fact this one restates or finalizes. A restated or final value is "
+                    "its own fact, never an overwrite; the link is how 'latest' is known.")
     evidence: list[EvidenceSpan] = Field(min_length=1)
     extraction: ExtractionInfo
+
+    @model_validator(mode="after")
+    def _no_self_supersession(self):
+        if self.supersedes_fact_id == self.fact_id:
+            raise ValueError("a fact cannot supersede itself")
+        return self
 
 
 # ---------------------------------------------------------------------------

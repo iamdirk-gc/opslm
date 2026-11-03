@@ -76,3 +76,10 @@ def test_a_file_name_label_on_a_mirrored_page_becomes_the_page_title():
 def test_a_file_name_label_on_a_github_link_is_kept():
     out = W.rewrite_links("[board-alignment.md](board-alignment.md)", "docs/status.md", PAGES)
     assert out == f"[board-alignment.md]({W.REPO_URL}/blob/main/docs/board-alignment.md)"
+
+
+def test_home_line_for_a_mirrored_page_is_refreshed():
+    old = "Welcome\n\n- [[Plan]]: p\n- [[Status]]: where the project stands against the board and the November 9 release\n"
+    new = W.update_home(old)
+    assert "November 9" not in new and "November 30" in new
+    assert new.count("[[Status]]") == 1 and "- [[Plan]]: p" in new

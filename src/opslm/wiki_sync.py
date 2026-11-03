@@ -89,12 +89,17 @@ def to_wiki_page(source: str, text: str, page: str, today: date) -> str:
 
 
 def update_home(home: str) -> str:
-    """Add the mirrored pages to the wiki Home page's list, once each."""
-    out = home.rstrip("\n")
+    """Add the mirrored pages to the wiki Home page's list, and refresh a line already there."""
+    lines = home.rstrip("\n").split("\n")
     for page, line in HOME_ENTRIES.items():
-        if f"[[{page.replace('-', ' ')}]]" not in out and f"|{page}]]" not in out:
-            out += f"\n- {line}"
-    return out + "\n"
+        marks = (f"[[{page.replace('-', ' ')}]]", f"|{page}]]")
+        for i, existing in enumerate(lines):
+            if existing.lstrip().startswith("- ") and any(m in existing for m in marks):
+                lines[i] = f"- {line}"
+                break
+        else:
+            lines.append(f"- {line}")
+    return "\n".join(lines) + "\n"
 
 
 def sync(repo_root: Path, wiki_dir: Path, today: date, pages: dict[str, str] | None = None) -> list[str]:

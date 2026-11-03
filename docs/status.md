@@ -1,11 +1,18 @@
-# Status: 2026-10-18
+# Status: 2026-11-03
 
-Snapshot of where the project stands against the board and the November 9 release (22 days out).
+Snapshot of where the project stands against the board and the release, which the owner has moved
+from November 9 to the end of November (about 4 weeks out; the exact date is still to be confirmed,
+this plan assumes November 30).
 Task-level detail is in [board-alignment.md](board-alignment.md); open questions for the project
 owner are in [decisions.md](decisions.md).
 
 ## Headline
 
+- **Since the Oct 18 snapshot the repository has been quiet.** The only changes were merging
+  the pair miner and the scope, decisions and status docs. None of the Oct 19 to Nov 3 work in
+  the old plan (parser spike, adapter layers, generator fixes) is in the repository, so the position
+  is the Oct 18 one with about 27 days left instead of 22. Anything done outside the repository
+  (documents, the board sheet, labeling) is not visible here.
 - **The evaluation machinery is built and tested; the real data is not.** Schema, loader, labeling
   workflow, rules and LLM baselines, harness, synthetic generator, pair miner and CI all exist.
   What does not exist is the extraction adapter, so nothing has touched a real document, and the
@@ -15,12 +22,13 @@ owner are in [decisions.md](decisions.md).
   (draft v0.3) on the wiki. The generator built before that spec meets some of it and not the rest;
   see below.
 - **The extraction adapter is the critical path, and the board's dates for it have passed** (due
-  Oct 17). It is scoped in [extraction-adapter-scope.md](extraction-adapter-scope.md): about 12 to
+  Oct 17; the owner's new dates are in the board sheet, which this page has not seen). It is scoped in [extraction-adapter-scope.md](extraction-adapter-scope.md): about 12 to
   14 engineering days for an MVP, of which about 5.5 days need no documents and can start now.
 - **No model has been run.** The LLM system is tested against mocks only; no API credentials,
   hosted open-weight model or GPU quota exist yet.
-- **Fine-tuning does not fit before November 9.** The board already marks it a stretch with a
-  go/no-go decision (D1), and "the release is publishable either way".
+- **Fine-tuning is still a stretch.** The board marks it as one with a go/no-go decision (D1), and
+  "the release is publishable either way". With four weeks it could fit only if the baselines are
+  done by about Nov 20; decide at D1, not before.
 
 ## What is built
 
@@ -33,8 +41,8 @@ owner are in [decisions.md](decisions.md).
 | Systems | Rules baseline (covers every metric-page variant; abstains on company-defined metrics without definitions); provider-agnostic LLM system (Anthropic, OpenAI-compatible, Vertex Gemini), never run against a real model |
 | Evaluation harness | Reconciliation-only mode: macro-F1, false-match rate, judgment accuracy, span-level evidence, cost and latency, slices, bootstrap intervals, paired test. Not built: end-to-end mode with extraction, difficulty slices |
 | Synthetic generator (v1, built before the requirements page) | 18 scenario templates over the five v1 metrics, labels checked against the guideline table at build time, held-out vocabulary tagged `heldout_name`. **Does not yet meet the requirements page; gaps below** |
-| Pair miner | **In review ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)).** Blocks by company and metric family, samples by stratum, assigns splits by company; checked against synthetic gold labels, never run on real facts |
-| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 356 tests |
+| Pair miner | **Merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)).** Blocks by company and metric family, samples by stratum, assigns splits by company; checked against synthetic gold labels, never run on real facts |
+| CI | Lint, tests on Python 3.10 to 3.14, a schema job, a smoke job, a package build; 358 tests |
 
 ## Where the board stands
 
@@ -56,7 +64,7 @@ to the owner's review where noted.
 | 2.4 | Not started | Needs D-02 |
 | M2 | Not started | Blocked on 2.1 to 2.3 |
 | 3.1 | In progress | Generator v1 exists but does not meet the requirements page (next section); blocked on the coverage grid (D-29) |
-| 3.2 | In progress | Tool built, in review as [PR #9](https://github.com/iamdirk-gc/opslm/pull/9); waits on extraction output. Still to change: it assigns splits by hash, but the roles are fixed (holdout companies to the test split only) |
+| 3.2 | In progress | Tool built and merged ([PR #9](https://github.com/iamdirk-gc/opslm/pull/9)); waits on extraction output. Still to change: it assigns splits by hash, but the roles are fixed (holdout companies to the test split only) |
 | 3.3 | In progress | Company and document-family separation enforced in code; the rule is not yet written up for real data |
 | 3.4 | Not started | Workflow ready; waits on candidates from real facts |
 | 3.5 | Not started | The generator can produce it; run after M1 so it follows the frozen guidelines |
@@ -89,23 +97,25 @@ must do. Measured on 800 scenarios (the most it can make):
 | Quality gate: the owner reviews 50 random cases per release | No sampling tool yet (the blind-review audit module covers the comparison) |
 | LLM rephrasing (open) | Not used: templates only. Recommendation in D-30 |
 
-## A realistic plan to November 9
+## A realistic plan to the end of November
 
-The board's M2 (Oct 17) and M3 (Oct 24) cannot be met. This keeps the board's must-haves for M6
-(holdout dataset, schema, harness, three baselines, evidence-linked outputs, documented results)
-and drops fine-tuning:
+The board's M2 (Oct 17) and M3 (Oct 24) were missed and the owner has moved the release. This plan
+keeps the board's must-haves for the release (holdout dataset, schema, harness, three baselines,
+evidence-linked outputs, documented results). It assumes November 30 and should be lined up with
+the owner's new milestone dates in the board sheet.
 
-| Window | Work | Needs |
+| Week | Work | Needs |
 |---|---|---|
-| Oct 19-23 | Parser spike (W0); build the document-independent adapter layers (W1, W2, W3, W6); owner finishes the document folders and manifests, answers licensing (D-02), and marks up the coverage grid (D-29); generator brought up to the requirements; owner reviews guidelines v1.1 and the remaining decisions | D-02, D-03, D-05, D-29 |
-| Oct 26-30 | Adapter on spreadsheets and filing tables (W4, W5); extraction verification sample (D-06); first mining run on real facts | Documents on disk |
-| Nov 2-4 | Mine candidates; labeling dry run, then the shared overlap and adjudication; freeze the holdout | The owner and engineering both labeling |
-| Nov 4-7 | Run the three baselines on the holdout (needs API credentials and a hosted open-weight model); results write-up; README and quickstart; reproducibility check from a fresh clone | D-24 |
-| Nov 9 | Release | |
+| Nov 3-6 | Parser spike (W0). Build the document-independent adapter layers (W1, W2, W3, W6). Fix the generator gaps that need no decision (company-name cap, label mix, per-case reproducibility fields); make the miner take company roles from the manifest. The owner finishes document folders and manifests, answers licensing (D-02), and marks up the coverage grid (D-29) | D-02, D-03, D-05, D-29, documents on disk |
+| Nov 9-13 | Adapter on spreadsheets and filing tables (W4, W5) and minimal definitions, basis and status (W7). Extraction verification sample (D-06). First mining run on real facts | Real documents, the owner's time for the sample |
+| Nov 16-20 | Labeling dry run, then the shared overlap, adjudication and guideline revisions; freeze the holdout. Arrange API credentials and a hosted open-weight model | Both people labeling; D-24 |
+| Nov 23-27 | Run the three baselines on the holdout; results write-up; README and quickstart; reproducibility check from a fresh clone. D1 go or no-go on fine-tuning | API credentials, the success threshold (D-07) |
+| Nov 30 | Release | |
 
-This is tight: any slip in document choice or in the first extraction results moves the holdout.
-The fallback, if real pairs arrive late, is to label the human-reviewed synthetic test candidates
-first and release a smaller real holdout with the limitation stated.
+This still has no slack: a slip in document choice or in the first extraction results moves the
+holdout, and the labeling week cannot be compressed (two people, one adjudication meeting). The
+fallback, if real pairs arrive late, is to label the human-reviewed synthetic test candidates first
+and release a smaller real holdout with the limitation stated.
 
 ## Risks, in order
 
@@ -118,14 +128,18 @@ first and release a smaller real holdout with the limitation stated.
    revisions it triggers all happen in the same few days.
 5. **No model has run.** First real runs per provider will surface small problems; budget for a
    day.
+6. **Momentum.** Three weeks passed with no repository activity. The plan above has the same work
+   as the Oct 18 one; it needs a start this week and a short check-in each week.
 
 ## Needed from the project owner this week
 
-D-02 (redistribution), D-03 (extraction scope), D-05 (sign normalization), D-07 (success
-threshold), D-08 (accept the replan), D-29 (the synthetic coverage grid, which the generator is
+The exact release date and the new board milestones, D-02 (redistribution), D-03 (extraction
+scope), D-05 (sign normalization), D-07 (success threshold), D-08 (the replan: the date moved, the
+scope question remains), D-29 (the synthetic coverage grid, which the generator is
 waiting on), and a review of guidelines v1.1. The full list is in
 [decisions.md](decisions.md).
 
-## In review now
+## Nothing is in review
 
-[PR #9](https://github.com/iamdirk-gc/opslm/pull/9), the pair-mining tool. Merge it directly into `main`.
+The two open PRs from Oct 18 are merged. The next change is the generator and miner work in week one
+of the plan.

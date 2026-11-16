@@ -137,7 +137,7 @@ The mechanics (sheets, commands, import checks) are in [labeling-workflow.md](la
 
 1. Each reviewer labels independently, without seeing the other's answers.
 2. Each reviewer labels their own batch (about 75 cases) **plus a shared overlap batch of about 30 cases** that both label.
-3. Compute agreement on the overlap (Cohen's kappa on the four labels, and on the same-concept judgment alone). Target kappa of at least 0.7.
+3. Compute agreement on the overlap (Cohen's kappa on the four labels, and on the same-concept judgment alone). Targets: the reviewers agree on at least 80% of the overlap cases before adjudication (owner decision X-29, a success criterion), and kappa of at least 0.7.
 4. Review every disagreement together. **The project owner has the final say** (owner decision X-21). Decide the correct label and **write down the rule** that settled it: add it to this document (bumping the version) and record it in the case's `adjudication_note` so it is not argued again.
 5. Only after the overlap is reconciled, finish the individual batches. Keep the shared overlap cases in the final test set with the reconciled label.
 6. A finalized case records who labeled it (`labeled_by`), who confirmed it (`reviewed_by`: the second reviewer on the overlap, or `adjudicated`), and the rule that settled any disagreement (`adjudication_note`).

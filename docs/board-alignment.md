@@ -20,7 +20,7 @@ owner's decision. Dates are from the board's Tracker sheet.
 | 1.2 Schema | In progress | Schema v0.2.0 (`schema.py`) adopted from the owner's draft: provenance (`SourceDocument`, `EvidenceSpan` with page, table, cell or character offsets), facts, task input (`ReconciliationInput`), output (`ReconciliationOutput`: relationship, optional resolution status and canonical value, reason codes, `evidence_refs` to exact spans) and `GoldLabel`. JSON Schemas are checked in under `schemas/` |
 | 1.3 Guidelines | Not started | Drafted (v1.1), unreviewed by a second person |
 | 1.4 Repo | In progress | License, packaging, layout and 300 tests exist. CI added (GitHub Actions: lint, tests on Python 3.10-3.14, a fresh-install smoke run, a package build) |
-| 1.5 Eval contract and threshold | Not started | Metrics implemented. **The fine-tuning success threshold is not defined** |
+| 1.5 Eval contract and threshold | Done | Success criteria decided Nov 3 (X-28 to X-32, the [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) wiki page): false-match rate as the headline, competitiveness targets, the fine-tuning go/no-go rule |
 | 1.6 Seed examples | Not started | Nine illustrative examples exist; they are not the owner's hand-labeled seed set |
 | 2.1-2.4 Extraction | Not started | **Adapter not built.** The document set (15 companies) was decided Oct 12 (2.2). Scoped in [extraction-adapter-scope.md](extraction-adapter-scope.md). Extraction should produce `BusinessFact` records with `EvidenceSpan` locations and `SourceDocument` metadata |
 | 3.1 Generator | In progress | Generator v1 built; the owner's requirements page (wiki, draft v0.4) was written after it and the gaps are listed in [status.md](status.md) |
@@ -59,5 +59,5 @@ Suggested mitigations:
 3. **Adjusted EBITDA names.** The board says variants are equivalent "if definition, entity and period match". v1.1 reads that as: without stated definitions the label is insufficient evidence, even for identical names. Confirm.
 4. **Sign conventions.** Should extraction normalize "net loss of 5.2" to -5.2, or should the reconciler handle it? The schema currently compares signed values as recorded.
 5. **Flow vs point-in-time pairs** such as Revenue vs ARR: the generator leaves scope undetermined (the label is settled by the concept difference). Is that the intended judgment?
-6. **Fine-tuning threshold (1.5).** What improvement counts as meaningful? It must be written before any results, and D1 depends on it.
+6. **Fine-tuning threshold (1.5).** Decided Nov 3 (X-30, X-32): fine-tuning worked if macro-F1 improves by at least 5 points over the untuned small model and the false-match rate falls.
 7. **Tracking.** GitHub Projects and Milestones could replace or complement the spreadsheet; issues in this public repo are public. Decide whether to migrate the engineering tasks.

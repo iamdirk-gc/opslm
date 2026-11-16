@@ -1,7 +1,7 @@
 # Decisions for the Project Owner
 
 One place for every question that needs the project owner's call, so none is buried in a PR thread.
-Updated 2026-11-03 with the owner's answers to Part B (D-10, D-12 to D-19), now X-17 to X-25, a new decision X-26, and the confirmed replan to November 30 (D-08, now X-27). Also 2026-11-03: the success criteria ([Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) on the wiki), which settle D-07 and D-20 (X-28 to X-32) and part of D-06, D-21 and D-24. IDs are stable: decided items move to the Decided table under a new X- number that records the old D- number. Where a default is listed, engineering has already applied it; changing it
+Updated 2026-11-16 with the owner's answers to everything still open except D-02 (X-33 to X-46). Earlier: the Part B answers and the replan on 2026-11-03 (X-17 to X-27) and the success criteria ([OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) on the wiki, X-28 to X-32). IDs are stable: decided items move to the Decided table under a new X- number that records the old D- number. Where a default is listed, engineering has already applied it; changing it
 later costs rework in proportion to how much was built or labeled on top of it.
 
 **How to answer:** reply in a PR or message, and the answer moves to the "Decided" table with the
@@ -9,41 +9,22 @@ date. Items are grouped by when they bite.
 
 ## A. Blocking the next two weeks
 
-These gate the extraction work, the holdout and the release. Nothing else on this list blocks as
-much.
+These gate the extraction work, the holdout and the release. As of 2026-11-16 only D-02 is open:
+it waits on the owner's reading of the sources' terms.
 
 | ID | Decision | Recommendation (and what is applied now) | Blocks |
 |---|---|---|---|
-| D-29 | **The synthetic coverage grid** (the requirements page's first open item): which metric × reason code × label cells are required, optional or impossible. Task 3.1 was to start Oct 15 and waits on this. | Engineering drafts the grid from the schema's reason-to-relationship rules and the generator's current coverage; the owner marks it up. | Generator work against the requirements |
-| D-30 | **Whether an LLM may rephrase template text** (the requirements page's second open item). | Templates only for the first release: reproducible, no provider terms to check, labels cannot drift. Revisit with the automatic meaning-preservation check the page describes. | Wording variety; not blocking |
 | D-02 | **Redistribution (task 2.4).** What may be published: the documents, only references (URL, hash, page and cell pointers), or references plus the short evidence text. Engineering cannot decide this and gives no legal advice. | Applied now: raw documents stay out of the repo (`local_path` is never committed), and each `SourceDocument` has a `license_note` to fill in. Needs the owner's reading of the sources' terms before any dataset is published. | The public holdout and the release write-up (6.3) |
-| D-03 | **Extraction scope for the release.** Tables only (spreadsheets, 10-K and 10-Q statements) plus targeted deck facts for ARR and Adjusted EBITDA, or also narrative facts. May a model help with mapping labels to metrics? | MVP: tables, plus targeted decks; rules for mapping, with `other` for anything unmatched; no model in the extraction path. Narrative facts after the holdout is labeled. | The size of the adapter work (about 12 to 14 days against 17 to 19) |
-| D-04 | **Use SEC XBRL data?** The 10-K and 10-Q filings carry machine-readable tagged values with periods and entities. | Use it to cross-check extracted facts at least; consider it as the primary source for 10-K statement values. It changes what "extraction accuracy" means, so the owner should agree. | How the adapter is verified and, optionally, how much of it is needed |
-| D-05 | **Sign conventions (board question).** Should extraction normalize "net loss of 5.2" and "(5.2)" to -5.2, or should the reconciler handle raw signs? | The adapter normalizes (a loss is stored negative) and keeps the printed form in `raw_text`; the reconciler compares signed values. This is already how the schema and the generator behave. | The number parser (W2) |
-| D-06 | **Who verifies extracted facts.** The accuracy bar is decided (at least 95% correct on the hand-checked sample, X-29); still open: who checks and how many facts. | A hand-checked sample of about 60 facts across the document set, split between the owner and engineering. | Trusting any result that depends on extraction |
 
 ## B. Needed before the labeling session
 
-All decided on 2026-11-03 (X-17 to X-26 below), except one new question that came out of the
-engineering work on them (D-31). Their engineering follow-ups, with status, are listed after the
-Decided table.
-
-| ID | Decision | Recommendation | Blocks |
-|---|---|---|---|
-| D-31 | **How does a fact record that it is preliminary rather than restated?** X-17 and X-26 use two reasons (`restatement`, `preliminary_vs_final`) for pairs linked by `supersedes_fact_id`, but nothing in the data says which applies. | Add `preliminary` as a value of `reporting_status` on the earlier fact (an additive change); a superseded fact marked `preliminary` gives `preliminary_vs_final`, otherwise `restatement`. Until decided, the guidelines say to choose from what the sources say and default to `restatement`. | The reason a labeler or system should give; the generator cannot produce preliminary pairs until then |
+All decided: X-17 to X-26 on 2026-11-03, and D-31 on 2026-11-16 (X-33). Their engineering follow-ups, with status, are listed after the Decided table.
 
 ## C. Needed before the release
 
 | ID | Decision | Recommendation or default | Origin |
 |---|---|---|---|
-| D-21 | Benchmark size above the floor. At least 150 holdout cases is decided (X-29); the open part is whether to aim higher than 150 | 150 to 200 cases per the tracker (3.4); differences under about 5 points are close to noise at this size | #11 |
-| D-22 | Employer boundary: no documents, figures or terminology from either contributor's employers or customers anywhere in the repo, data or prompts. Confirm both sides understand. | Applied; assumed | #13 |
-| D-23 | Dataset and model licenses. Code is Apache 2.0; data and weights are separate. | CC BY 4.0 for the data (subject to D-02) and Apache 2.0 for weights; the base model's license may restrict | #14 |
-| D-24 | Which models to compare. (The self-hosted cost method is decided: X-31.) | One or two frontier models, one mid-size open-weight model (Vertex AI or vLLM), the same small model fine-tuned if D1 goes ahead, and the rules baseline. | #16 |
-| D-25 | Base model family and size | One Apache-2.0 family, 1.5 to 3B locally, optionally 7 to 8B on a rented GPU | #15 |
 | D-26 | GPU quota on the Google Cloud project `opslm-511123` | An action, not a choice: request it a week before it is needed. Not yet requested. | #17 |
-| D-27 | Repository visibility | Public, as it is | #19 |
-| D-28 | Is `metric_id` an extractor output on real data, and does the end-to-end evaluation give it to the reconciler? | Treated as a hint that systems do not see by default (the LLM system's `--show-metric-id`); the adapter will produce it by mapping rules | Review of #6 and #8 |
 
 ## D. Decided
 
@@ -77,11 +58,25 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-25 | **Definitions for company-defined metrics** (ARR, adjusted EBITDA) are recorded when facts are built, not looked up at comparison time (was D-17). Each fact carries its definition with an evidence span, taken from the same document or another document of the same company and period (for example a deck's adjusted EBITDA uses the release's reconciliation table). Definitions are stored per company and period, since they change between years. The reconciler compares the attached definitions: match = same concept; differ = `related_but_different` (`definition_mismatch`); none found in the document set = `insufficient_evidence` (`missing_definition`). | 2026-11-03 | Owner decisions, Part B |
 | X-26 | **Preliminary vs final results** (new) are handled like restatements: both stored as separate facts, the pair labeled `conflicting` with new reason `preliminary_vs_final`, and the reconciler selects the final value. | 2026-11-03 | Owner decisions, Part B |
 | X-27 | **The replan** (was D-08). The release moves from November 9 to November 30, 2026, with the milestone dates in the tracker. The extraction adapter is the critical path (due Nov 20); the holdout is built from hand-built facts (task 2.5), so labeling does not wait for the adapter; fine-tuning is decided at D1 once baselines exist and otherwise left out. | 2026-11-03 | Tracker, replanned Nov 3 |
-| X-28 | **Headline metric** (was D-20): the false-match rate, how often a system says two facts are the same when they are not (a wrong merge silently corrupts downstream analysis). Reported alongside it: macro-F1 (the four labels weighted equally) and cost per 1,000 pairs. | 2026-11-03 | [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) |
-| X-29 | **The benchmark is trustworthy** when all hold: at least 150 labeled holdout cases from the 9 holdout companies; the two reviewers agree on at least 80% of the overlap cases before adjudication; extraction is at least 95% correct on the hand-checked fact sample. (Sets the floor in D-21 and the accuracy bar in D-06.) | 2026-11-03 | [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) |
-| X-30 | **A small model is competitive with the frontier model** (was D-07) when all hold: macro-F1 within 5 points of the frontier model; false-match rate at most 5% and no more than 2 points above the frontier model; at most 20% of the frontier model's cost per 1,000 pairs; p95 latency no slower than the frontier model. The release is a success even if the answer is "not competitive yet", as long as results are judged against these targets. | 2026-11-03 | [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) |
-| X-31 | **Self-hosted cost** (part of D-24) is GPU-hours at a published hourly price, at a stated volume (for example 100,000 pairs a month), so idle time at benchmark scale does not distort the comparison. | 2026-11-03 | [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) |
-| X-32 | **Fine-tuning go/no-go (D1, Nov 23) and the reporting rule.** Go if the untuned small model meets the cost target but misses quality or safety; no-go if it meets every target, or misses on cost. Fine-tuning worked if it improves macro-F1 by at least 5 points over the untuned small model and lowers the false-match rate. Every number is reported with its confidence interval, and a difference is claimed only when the intervals support it. | 2026-11-03 | [Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/Success-Criteria) |
+| X-28 | **Headline metric** (was D-20): the false-match rate, how often a system says two facts are the same when they are not (a wrong merge silently corrupts downstream analysis). Reported alongside it: macro-F1 (the four labels weighted equally) and cost per 1,000 pairs. | 2026-11-03 | [OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) |
+| X-29 | **The benchmark is trustworthy** when all hold: at least 150 labeled holdout cases from the 9 holdout companies; the two reviewers agree on at least 80% of the overlap cases before adjudication; extraction is at least 95% correct on the hand-checked fact sample. (Sets the floor in D-21 and the accuracy bar in D-06.) | 2026-11-03 | [OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) |
+| X-30 | **A small model is competitive with the frontier model** (was D-07) when all hold: macro-F1 within 5 points of the frontier model; false-match rate at most 5% and no more than 2 points above the frontier model; at most 20% of the frontier model's cost per 1,000 pairs; p95 latency no slower than the frontier model. The release is a success even if the answer is "not competitive yet", as long as results are judged against these targets. | 2026-11-03 | [OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) |
+| X-31 | **Self-hosted cost** (part of D-24) is GPU-hours at a published hourly price, at a stated volume (for example 100,000 pairs a month), so idle time at benchmark scale does not distort the comparison. | 2026-11-03 | [OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) |
+| X-32 | **Fine-tuning go/no-go (D1, Nov 23) and the reporting rule.** Go if the untuned small model meets the cost target but misses quality or safety; no-go if it meets every target, or misses on cost. Fine-tuning worked if it improves macro-F1 by at least 5 points over the untuned small model and lowers the false-match rate. Every number is reported with its confidence interval, and a difference is claimed only when the intervals support it. | 2026-11-03 | [OpsLM Success Criteria](https://github.com/iamdirk-gc/opslm/wiki/OpsLM-Success-Criteria) |
+| X-33 | **Preliminary vs restated facts** (was D-31). Add `preliminary` as a value of `reporting_status` on the earlier fact. A superseded fact marked `preliminary` gives reason `preliminary_vs_final`; any other superseded fact gives `restatement`. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-34 | **Extraction scope** (was D-03). The adapter covers tables (10-K and 10-Q statements, spreadsheets) plus targeted deck facts for ARR and Adjusted EBITDA. Mapping labels to metrics is rule-based, with `other` for anything unmatched; no model in the extraction path. Narrative facts come later. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-35 | **SEC XBRL data** (was D-04). XBRL cross-checks every extracted fact and is the main source for 10-K statement values. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-36 | **Sign conventions** (was D-05). Extraction normalizes signs (a loss is stored negative) and keeps the printed form in `raw_text`; the reconciler compares signed values. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-37 | **Who verifies extracted facts** (was D-06). A hand-checked sample of about 60 facts across the document set, split between the owner and engineering, against the 95% bar in X-29. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-38 | **The second replan.** Extraction stays in the release, so the release moves from November 30 to **early January 2027**; the exact date is set with engineering. Every milestone moves, including the fine-tuning go/no-go (D1, was Nov 23). Supersedes the date in X-27. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-39 | **Synthetic coverage grid** (was D-29). Rule-based: required, every valid label and primary-reason pair on the four core metrics; optional, ARR; impossible, `currency_mismatch` (v1 is USD only, X-18) and any pair the schema rejects. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-40 | **LLM rephrasing** (was D-30). Templates only for v1; no LLM rephrasing. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-41 | **Benchmark size** (was D-21). 150 to 200 holdout cases (the floor of 150 is X-29). | 2026-11-16 | Owner decisions, Nov 16 |
+| X-42 | **Employer boundary** (was D-22). No employer or customer material anywhere in the repo, data or prompts. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-43 | **Licenses** (was D-23). CC BY 4.0 for the data (subject to D-02), Apache 2.0 for weights; code stays Apache 2.0. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-44 | **Models compared** (was D-24 and D-25). One or two frontier models, one mid-size open-weight model, one small Apache-2.0 model (1.5 to 3B locally, optionally 7 to 8B on a rented GPU) for fine-tuning, and the rules baseline. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-45 | **Repository visibility** (was D-27). The repository stays public. | 2026-11-16 | Owner decisions, Nov 16 |
+| X-46 | **`metric_id`** (was D-28). A hint the systems do not see by default; the adapter produces it with mapping rules. | 2026-11-16 | Owner decisions, Nov 16 |
 
 ### Follow-ups from the 2026-11-03 decisions
 
@@ -103,3 +98,17 @@ Every question from the limitations doc (Part 1) and the board-alignment questio
 | X-30 | Harness: a comparison table that checks each target (quality, safety, cost, p95 latency) against the frontier model, with intervals. |
 | X-31 | Cost: record GPU type, hourly price and throughput for self-hosted runs, and compute cost per 1,000 pairs at the stated monthly volume. Not built. |
 | X-32 | Harness comparisons claim a difference only when the intervals support it (the paired test exists). D1 is decided from the X-30 table on Nov 23. |
+| X-33 | Schema: add `preliminary` to `ReportingStatus` (additive) and derive the reason from it; guidelines: replace the interim "default to `restatement`" with the rule. Not built. |
+| X-34 | None beyond the scope in [extraction-adapter-scope.md](extraction-adapter-scope.md), which already assumes it. |
+| X-35 | Adapter: an XBRL reader used as the source for 10-K statement values and as a cross-check on every other extracted fact; extraction scoring (2.7) reports agreement with XBRL. Not built. |
+| X-36 | None; already how the schema and the generator behave. The adapter's number parser follows it. |
+| X-37 | Task 2.7: split the ~60-fact sample between the owner and engineering. |
+| X-38 | Tracker and [status.md](status.md): new milestone dates once the exact release date is set. |
+| X-39 | Write the grid into [synthetic-data.md](synthetic-data.md) from `PRIMARY_REASONS` and the four core metrics, and test the generator's coverage against it (3.1, 3.6). Remove `currency_mismatch` scenarios and non-USD companies from the generator (X-18). |
+| X-40 | None; the generator is templates only. |
+| X-41 | Labeling target 150 to 200 (3.4). |
+| X-42 | None; applied. |
+| X-43 | State the licenses in the dataset card and the release write-up (6.3). |
+| X-44 | Harness run configs for the lineup; choose the base model within the Apache-2.0 family (5.1). |
+| X-45 | None. |
+| X-46 | None; applied (`--show-metric-id`). |

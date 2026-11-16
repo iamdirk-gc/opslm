@@ -5,6 +5,14 @@ out). The release was replanned on Nov 3 from November 9 (X-27). Task-level deta
 [board-alignment.md](board-alignment.md); open questions for the project owner are in
 [decisions.md](decisions.md).
 
+> **Update 2026-11-16.** Nothing in the repository or the tracker moved between Nov 3 and Nov 16,
+> so the tasks due Nov 4 to 15 are past due. The owner decided to keep extraction in the release
+> and move it to **early January 2027** (X-38); the exact date and new milestone dates are to be
+> set with engineering. The Nov 30 plan below is superseded. The owner also decided every open
+> question except D-02 (X-33 to X-46). Next: request the GPU quota (D-26), sign off guidelines
+> v1.2 (1.3), and start the hand-built holdout facts (2.5), which labeling, the seed examples and
+> extraction scoring all depend on.
+
 ## Headline
 
 - **The evaluation machinery is built and tested; the real data is not.** Schema, loader, labeling
@@ -60,9 +68,9 @@ tasks are done and none is overdue.
 | M1 | Guidelines, decisions and success criteria locked | Not started | Nov 8 | |
 | 2.1 | Parser comparison on two holdout filings | Not started | Nov 6 | Section 5 of the scope doc |
 | 2.2 | Source documents and provenance | Done | Oct 15 | 50 files; the CrowdStrike deck is still missing |
-| 2.3 | Extraction adapter MVP | Not started | Nov 20 | **Critical path** (D-03 scope) |
+| 2.3 | Extraction adapter MVP | Not started | Nov 20 | **Critical path** (scope: X-34) |
 | 2.4 | What can be published | Not started | Nov 7 | D-02 |
-| 2.5 | Hand-built holdout facts, checked against SEC XBRL | Not started | Nov 12 | Candidate pool for labeling and the extraction answer key (D-04) |
+| 2.5 | Hand-built holdout facts, checked against SEC XBRL | Not started | Nov 12 | Candidate pool for labeling and the extraction answer key (XBRL: X-35) |
 | 2.6 | Upload the document set to the project's private bucket | Not started | Nov 4 | |
 | M2 | Evidence-linked facts for all 15 companies | Not started | Nov 20 | |
 | 2.7 | Score extraction against the hand-built facts | Not started | Nov 22 | At least 95% correct on the hand-checked sample (X-29) |
@@ -71,13 +79,13 @@ tasks are done and none is overdue.
 | 3.3 | Split rules for real data | In progress | Nov 7 | Company separation and role-based splits built |
 | 3.4 | Label 150 to 200 holdout cases with overlap and adjudication | Not started | Nov 20 | About 8 to 12 hours of labeling |
 | 3.5 | Generate the training set (about 2,000 pairs) | Not started | Nov 14 | About 25% per label |
-| 3.6 | Mark up the synthetic coverage grid | Not started | Nov 6 | D-29 |
+| 3.6 | Mark up the synthetic coverage grid | Not started | Nov 6 | Rule decided (X-39); engineering writes the grid |
 | 3.7 | Review 50 random synthetic cases | Not started | Nov 15 | Fewer than 2 wrong labels to pass |
 | M3 | Holdout frozen, training set generated | Not started | Nov 20 | |
 | 4.1 | Harness: resolution scoring, difficulty slices, end-to-end mode | In progress | Nov 22 | |
 | 4.2 | Rules baseline on the holdout | In progress | Nov 21 | Owner reviews the synonym map |
-| 4.3 | Frontier model on the holdout | In progress | Nov 22 | Run on the seed set first; D-24 |
-| 4.4 | Untuned open-weight model on the holdout | In progress | Nov 22 | No model hosted yet; D-24, D-25 |
+| 4.3 | Frontier model on the holdout | In progress | Nov 22 | Run on the seed set first; lineup: X-44 |
+| 4.4 | Untuned open-weight model on the holdout | In progress | Nov 22 | No model hosted yet; lineup: X-44 |
 | 4.5 | Request GPU quota | Not started | Nov 4 | D-26; approval can take days |
 | M4 | Baseline results table | Not started | Nov 23 | |
 | D1 | Fine-tuning go/no-go | Not started | Nov 23 | Against the success criteria (1.5) |
@@ -98,7 +106,7 @@ must do. Measured on Oct 18 on 800 scenarios (the most it could make then):
 |---|---|
 | First release of about 2,000 pairs | **Cannot: it runs out of fictional company names at about 850 scenarios (about 1,060 pairs).** A vocabulary fix, not a design problem |
 | About 25% per label in training, a realistic mix in dev | **Not met:** training is 34% equivalent, 31% related, 22% conflicting, 14% insufficient evidence; the dev split has the same mix as training |
-| Coverage grid: metric × reason code × label | Not started; the grid itself is undecided (D-29, tracker 3.6) |
+| Coverage grid: metric × reason code × label | Not started; the rule is decided (X-39), the grid is not yet written (tracker 3.6) |
 | Correct by construction | Met: labels and reasons are fixed from the template and checked against the guideline table before any case exists |
 | No shortcuts: surface features alone score near chance | **Not met, and not yet properly tested.** Structure-only features (same metric id, fields missing, definitions present, ...) already reach 66% against 25% chance. Real data has such structure too, so this is a measurement, not a verdict; a text-only shortcut test is still to be built |
 | Hold some templates and companies out of training | Companies: met. Templates: not done (only names are held out) |
@@ -106,9 +114,9 @@ must do. Measured on Oct 18 on 800 scenarios (the most it could make then):
 | Hard negatives | The four core examples are covered. The traps seen in the real set are not: constant-currency ARR, ARR including payments fees, preliminary vs final results (now a decided rule, X-26) ("ARR as quarterly revenue times four" is covered in part) |
 | Reproducible: each case records version, seed, config | The manifest does; individual cases do not yet |
 | Quality gate: the owner reviews 50 random cases per release | No sampling tool yet (the blind-review audit module covers the comparison) |
-| LLM rephrasing (open) | Not used: templates only. Recommendation in D-30 |
+| LLM rephrasing | Not used: templates only, as decided (X-40) |
 
-## The plan to November 30
+## The plan to November 30 (superseded by X-38)
 
 From the tracker. The holdout is built from hand-built facts, so labeling does not wait for the
 extraction adapter; the adapter is scored against those same facts.
@@ -138,11 +146,12 @@ reconciliation-only results on the hand-built holdout and state the end-to-end l
 5. **No model has run.** First real runs per provider will surface small problems; budget for a
    day, and run on the seed set first.
 
-## Needed from the project owner this week
+## Needed from the project owner
 
-Review and approve guidelines v1.2 (1.3, Nov 6), the
-synthetic coverage grid (D-29, Nov 6), redistribution (D-02, Nov 7), extraction scope (D-03) and
-sign normalization (D-05). The full list is in [decisions.md](decisions.md).
+As of Nov 16: request the GPU quota on `opslm-511123` (D-26; approval can take days), approve
+guidelines v1.2 (1.3), set the new release and milestone dates with engineering (X-38), and decide
+redistribution (D-02) after reading the sources' terms. Everything else is decided; see
+[decisions.md](decisions.md).
 
 ## Done since the Nov 3 snapshot
 
